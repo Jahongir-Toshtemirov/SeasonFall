@@ -11,3 +11,4 @@ Thumbs.db
 *.log
 packaging/_debroot/
 packaging/_winportable/
+packaging/_macbuild/
