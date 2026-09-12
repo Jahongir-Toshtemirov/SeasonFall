@@ -68,12 +68,22 @@ def _collect_overrides(args) -> dict:
 # --------------------------------------------------------------------------- #
 #  Runners
 # --------------------------------------------------------------------------- #
+def _enable_ctrl_c_quit(app) -> None:
+    """Make Ctrl+C quit the Qt loop instead of printing a KeyboardInterrupt
+    traceback and (confusingly) keeping the app alive — PySide6 swallows
+    exceptions raised inside event-loop callbacks."""
+    import signal
+
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+
+
 def run_overlay(overrides: dict, duration: float | None = None) -> int:
     _linux_prefer_xcb()
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
     app = QApplication(sys.argv[:1])
+    _enable_ctrl_c_quit(app)
     app.setApplicationName("SeasonFall")
     app.setApplicationDisplayName("SeasonFall")
 
@@ -112,6 +122,7 @@ def run_settings() -> int:
     from . import settings_gui
 
     app = QApplication(sys.argv[:1])
+    _enable_ctrl_c_quit(app)
     app.setApplicationName("SeasonFall")
     app.setWindowIcon(settings_gui.app_icon())
     first_run = not Config.exists() or not Config.load().first_run_done
@@ -268,6 +279,28 @@ def cmd_smoke() -> int:
         field.tick(0.30, None)          # simulated massive frame spikes
     assert len(field.particles) == n0, "particle count changed under load!"
     print("constant count under load      OK")
+
+    # paint hygiene: real widget paint cycles must not emit Qt painter
+    # warnings (regression: overlay once froze + spammed "A paint device
+    # can only be painted by one painter at a time" on X11)
+    from types import SimpleNamespace
+    from PySide6.QtCore import qInstallMessageHandler
+    from PySide6.QtGui import QGuiApplication
+    from .overlay import SeasonOverlay
+
+    qt_msgs: list[str] = []
+    qInstallMessageHandler(lambda _t, _c, m: qt_msgs.append(str(m)))
+    fake_mgr = SimpleNamespace(cfg=cfg, specs=specs, next_seed=lambda: 7)
+    overlay = SeasonOverlay(fake_mgr, QGuiApplication.primaryScreen())
+    for _ in range(300):
+        overlay.repaint()               # forced synchronous paint cycles
+    app.processEvents()
+    overlay.close()
+    qInstallMessageHandler(None)
+    bad = [m for m in qt_msgs
+           if ("QPainter" in m or "QBackingStore" in m or "paint device" in m)]
+    assert not bad, f"Qt painter warnings during 300 frames: {bad[:3]}"
+    print("paint hygiene (300 repaints, zero Qt painter warnings) OK")
 
     os.environ["SEASONFALL_CONFIG_DIR"] = str(out_dir / "cfg")
     c1 = Config(season="autumn", density=77)

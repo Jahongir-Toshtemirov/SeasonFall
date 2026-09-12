@@ -7,14 +7,18 @@ from __future__ import annotations
 
 import getpass
 import json
+import os
 
 from PySide6.QtCore import QObject
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 
 def socket_name() -> str:
+    """Per-user socket name; SEASONFALL_IPC_NAME overrides it so that test
+    instances never clash with (or disconnect) a real running overlay."""
     user = getpass.getuser() or "user"
-    return f"seasonfall-{user}"
+    return os.environ.get("SEASONFALL_IPC_NAME") or f"seasonfall-{user}"
+
 
 
 def send_command(cmd: str, wait_reply: bool = False):

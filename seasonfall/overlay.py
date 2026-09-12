@@ -52,8 +52,20 @@ class SeasonOverlay(QWidget):
             super().keyPressEvent(ev)
 
     def paintEvent(self, ev) -> None:
+        # End the painter explicitly (like the settings preview does): if the
+        # QPainter survives the paint cycle on GC timing, Qt warns
+        # "QBackingStore::endPaint() called with active painter" and every
+        # later frame fails with "A paint device can only be painted by one
+        # painter at a time" — leaving a frozen overlay and stderr spam.
+        if self.paintingActive():
+            return
         painter = QPainter(self)
-        self.field.paint(painter, transparent=True)
+        if not painter.isActive():
+            return
+        try:
+            self.field.paint(painter, transparent=True)
+        finally:
+            painter.end()
 
 
 class OverlayManager(QObject):

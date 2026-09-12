@@ -391,49 +391,53 @@ class ParticleField:
 
     def paint(self, painter: QPainter, transparent: bool = True) -> None:
         painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        rect = QRectF(0, 0, self.w, self.h)
-        if transparent:
-            painter.setCompositionMode(QPainter.CompositionMode_Clear)
-            painter.fillRect(rect, QColor(0, 0, 0, 0))
-            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
-        else:
-            bg = QColor("#223047")
-            painter.fillRect(rect, bg)
-        cache = self._sprite_cache
-        tumble = self.cfg.tumble
-        for p in self.particles:
-            if p.kind == S.K_RAIN:          # streaks stay vector (cheap)
-                self._d_rain(painter, p)
-                continue
-            bucket = max(2, int(round(p.size)))
-            key = (p.kind, p.color, bucket)
-            entry = cache.get(key)
-            if entry is None:
-                entry = self._render_sprite(p.kind, p.color, float(bucket))
-                cache[key] = entry
-            pm, logical = entry
-            painter.save()
-            painter.translate(p.x, p.y)
-            if p.kind == S.K_BAT:
-                flap = 0.55 + 0.45 * abs(math.sin(self.t * 9.0 + p.seed))
-                painter.rotate(10.0 * math.sin(self.t * 2.2 + p.seed))
-                painter.scale(1.0, flap)
-            elif p.kind == S.K_HEART:
-                painter.rotate(8.0 * math.sin(self.t * 1.5 + p.seed))
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            rect = QRectF(0, 0, self.w, self.h)
+            if transparent:
+                painter.setCompositionMode(QPainter.CompositionMode_Clear)
+                painter.fillRect(rect, QColor(0, 0, 0, 0))
+                painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
             else:
-                if p.rot and tumble:
-                    painter.rotate(p.rot)
-                if p.flip_spd:
-                    painter.scale(0.3 + 0.7 * abs(math.cos(p.flip)), 1.0)
-            painter.setOpacity(self._alpha(p) / 255.0)
-            painter.drawPixmap(QRectF(-logical / 2.0, -logical / 2.0,
-                                      logical, logical),
-                               pm,
-                               QRectF(0.0, 0.0, float(pm.width()),
-                                      float(pm.height())))
+                bg = QColor("#223047")
+                painter.fillRect(rect, bg)
+            cache = self._sprite_cache
+            tumble = self.cfg.tumble
+            for p in self.particles:
+                if p.kind == S.K_RAIN:          # streaks stay vector (cheap)
+                    self._d_rain(painter, p)
+                    continue
+                bucket = max(2, int(round(p.size)))
+                key = (p.kind, p.color, bucket)
+                entry = cache.get(key)
+                if entry is None:
+                    entry = self._render_sprite(p.kind, p.color, float(bucket))
+                    cache[key] = entry
+                pm, logical = entry
+                painter.save()
+                try:
+                    painter.translate(p.x, p.y)
+                    if p.kind == S.K_BAT:
+                        flap = 0.55 + 0.45 * abs(math.sin(self.t * 9.0 + p.seed))
+                        painter.rotate(10.0 * math.sin(self.t * 2.2 + p.seed))
+                        painter.scale(1.0, flap)
+                    elif p.kind == S.K_HEART:
+                        painter.rotate(8.0 * math.sin(self.t * 1.5 + p.seed))
+                    else:
+                        if p.rot and tumble:
+                            painter.rotate(p.rot)
+                        if p.flip_spd:
+                            painter.scale(0.3 + 0.7 * abs(math.cos(p.flip)), 1.0)
+                    painter.setOpacity(self._alpha(p) / 255.0)
+                    painter.drawPixmap(QRectF(-logical / 2.0, -logical / 2.0,
+                                              logical, logical),
+                                       pm,
+                                       QRectF(0.0, 0.0, float(pm.width()),
+                                              float(pm.height())))
+                finally:
+                    painter.restore()
+        finally:
             painter.restore()
-        painter.restore()
 
     @property
     def _drawers(self):

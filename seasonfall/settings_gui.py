@@ -196,9 +196,16 @@ class PreviewWidget(QWidget):
         self.update()
 
     def paintEvent(self, ev):
+        # Same painter hygiene as SeasonOverlay.paintEvent (explicit end).
+        if self.paintingActive():
+            return
         painter = QPainter(self)
-        self.field.paint(painter, transparent=False)
-        painter.end()
+        if not painter.isActive():
+            return
+        try:
+            self.field.paint(painter, transparent=False)
+        finally:
+            painter.end()
 
 
 class SettingsWindow(QMainWindow):
