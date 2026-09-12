@@ -372,12 +372,9 @@ def main(argv: list[str] | None = None) -> int:
     if not Config.exists() or not Config.load().first_run_done:
         log("welcome! opening the season picker…")
         return run_settings()
-    _ipc_app()
-    from .ipc import probe_status
-    if probe_status():
-        log("overlay already running — open settings with: "
-            "python -m seasonfall settings")
-        return 0
+    # NOTE: no probe here — run_overlay() probes *after* creating the
+    # QApplication. Probing earlier would create a QCoreApplication singleton
+    # and Qt forbids both singletons in one process (libshiboken RuntimeError).
     return run_overlay(_collect_overrides(args), duration=args.duration)
 
 

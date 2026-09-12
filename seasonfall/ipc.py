@@ -27,7 +27,8 @@ def send_command(cmd: str, wait_reply: bool = False):
     payload = (json.dumps({"cmd": cmd}) + "\n").encode()
     sock.write(payload)
     sock.flush()
-    sock.waitForBytesWritten(500)
+    if sock.state() == QLocalSocket.LocalSocketState.ConnectedState:
+        sock.waitForBytesWritten(500)
     if wait_reply:
         if sock.waitForReadyRead(900):
             data = bytes(sock.readAll()).decode(errors="replace").strip()
@@ -108,6 +109,8 @@ class IpcServer(QObject):
     @staticmethod
     def _write(sock, obj) -> None:
         try:
+            if sock.state() != QLocalSocket.LocalSocketState.ConnectedState:
+                return
             sock.write((json.dumps(obj) + "\n").encode())
             sock.flush()
             sock.waitForBytesWritten(300)
