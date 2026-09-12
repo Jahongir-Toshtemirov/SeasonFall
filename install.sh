@@ -12,7 +12,7 @@ echo "==> Using $($PY --version 2>&1) at $(command -v "$PY")"
 
 # 1) virtual environment (fall back to --user install if venv is unavailable)
 if [ ! -x .venv/bin/python ]; then
-    if "$PY" -m venv .venv 2>/dev/null; then
+    if "$PY" -m venv .venv >/dev/null 2>&1; then
         echo "==> Created virtual environment (.venv)"
     else
         rm -rf .venv
@@ -24,11 +24,11 @@ if [ -x .venv/bin/python ]; then PYBIN=.venv/bin/python; else PYBIN="$PY"; fi
 
 # 2) dependency (PySide6)
 echo "==> Installing PySide6 (this can take a minute)…"
-if ! "$PYBIN" -m pip install -q -r requirements.txt 2>/dev/null \
-   || ! "$PYBIN" -c "import PySide6" 2>/dev/null; then
+if ! "$PYBIN" -m pip install -q -r requirements.txt >/dev/null 2>&1 \
+   || ! "$PYBIN" -c "import PySide6" >/dev/null 2>&1; then
     rm -rf .venv
     PYBIN="$PY"
-    "$PYBIN" -m pip install --user -q -r requirements.txt \
+    "$PYBIN" -m pip install --user -q -r requirements.txt >/dev/null 2>&1 \
         || "$PYBIN" -m pip install --user -q --break-system-packages -r requirements.txt
 fi
 
