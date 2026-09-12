@@ -48,9 +48,9 @@ See the [`releases/`](releases/) folder and the GitHub **Releases** page:
 
 | OS | File | Install |
 |---|---|---|
-| 🐧 Linux (Debian/Ubuntu) | `SeasonFall_*_amd64.deb` | `sudo apt install ./SeasonFall_*_amd64.deb` → launch **SeasonFall** from the app grid |
-| 🪟 Windows | `SeasonFall-Windows-portable.zip` (now) / `SeasonFall-Windows.exe` (via CI) | unzip → double-click **Start SeasonFall.bat** |
-| 🍎 macOS | `SeasonFall-macOS.zip` (via CI) | unzip → drag `SeasonFall.app` into Applications |
+| 🐧 Linux (Debian/Ubuntu) | `SeasonFall_1.1.0_amd64.deb` | `sudo apt install ./SeasonFall_1.1.0_amd64.deb` → launch **SeasonFall** from the app grid |
+| 🪟 Windows | `SeasonFall-Windows.exe` | double-click (single file, fully offline) |
+| 🍎 macOS | `SeasonFall.app` | double-click (or drag into Applications) |
 
 ### From source
 
