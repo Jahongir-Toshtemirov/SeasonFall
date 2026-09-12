@@ -108,7 +108,8 @@ class Config:
                     pass
         return path
 
-    def exists(self) -> bool:
+    @staticmethod
+    def exists() -> bool:
         return config_path().exists()
 
     # ---------- validation ----------

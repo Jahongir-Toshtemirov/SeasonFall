@@ -14,9 +14,11 @@ python3 SeasonFall.py          # Windows:  py SeasonFall.py
 ```
 
 The first run bootstraps a private environment, installs its single dependency
-(**PySide6 / Qt6**), and opens the season picker. Pick a season, tune the feel,
-answer the *"start at login?"* question — the app closes itself and the season
-begins to fall. 🍃
+(**PySide6 / Qt6**), **adds "SeasonFall" to your app list** (Linux app grid /
+Windows Start Menu / macOS `~/Applications`), and opens the season picker.
+From then on you launch it like any normal app — **no terminal needed**.
+Pick a season, tune the feel, answer the *"start at login?"* question —
+the window closes itself and the season begins to fall. 🍃
 
 ---
 
@@ -110,11 +112,11 @@ temporarily untick click-through.
 python -m seasonfall                # smart: first run → settings, else overlay
 python -m seasonfall settings       # open the settings window
 python -m seasonfall overlay        # run the overlay
+python -m seasonfall install        # (re)register the app-list/Start-Menu entry
 python -m seasonfall --season autumn --density 60 --wind 30   # one-off override
 python -m seasonfall pause | resume | quit | status
 python -m seasonfall startup on | off | status
-python -m seasonfall menu           # (Linux) app-menu entry with icon
-python -m seasonfall uninstall      # remove autostart + settings
+python -m seasonfall uninstall      # remove app entry + autostart + settings
 python -m seasonfall smoke          # headless self-test (renders all seasons)
 ```
 
@@ -163,6 +165,7 @@ and verifies config persistence + autostart registration. `SMOKE: PASS` = health
 |---|---|
 | `Could not load the Qt platform plugin "xcb"` (Linux) | Install the libs listed in the Wayland box above |
 | Overlay is a rectangle / no transparency | You're without a compositor or on Wayland-native QPA — SeasonFall auto-selects xcb/XWayland; check `echo $QT_QPA_PLATFORM` |
+| App missing from the app list / moved the repo folder | `run.sh install` (or `python -m seasonfall install`) re-registers it |
 | Snow doesn't start at login | `run.sh startup on`; if you *moved the repo folder*, re-run it |
 | Too heavy on CPU | lower **Quality** to medium/low, FPS to 30, disable mouse interaction |
 | Two overlays running | impossible — single-instance IPC; `run.sh status` shows the live one |

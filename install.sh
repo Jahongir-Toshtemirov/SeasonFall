@@ -54,7 +54,11 @@ if [ "$(uname -s)" = "Linux" ] && command -v apt-get >/dev/null 2>&1; then
     fi
 fi
 
-# 3) optional autostart
+# 4) register in the OS application list (launch like a normal app, no terminal)
+echo "==> Adding SeasonFall to your app list…"
+"$PYBIN" -m seasonfall install || true
+
+# 5) optional autostart
 if [ "${1:-}" = "--startup" ] || [ "${1:-}" = "startup" ]; then
     "$PYBIN" -m seasonfall startup on
 fi
@@ -63,11 +67,11 @@ chmod +x run.sh SeasonFall.py 2>/dev/null || true
 
 cat <<'EOF'
 
-SeasonFall is ready! ❄🌸☀🍂
+SeasonFall is installed! ❄🌸☀🍂
 
-  ./run.sh                  # open the season picker (GUI)
-  ./run.sh overlay          # start the desktop overlay directly
-  ./run.sh startup on       # start automatically at login
-  ./run.sh menu             # (Linux) add an app-menu entry
-  ./run.sh quit             # stop a running overlay
+  • Open "SeasonFall" from your app list / Start Menu (no terminal needed)
+  • ./run.sh settings      # same thing from a terminal
+  • ./run.sh overlay       # start the desktop overlay directly
+  • ./run.sh startup on    # fall automatically at login
+  • ./run.sh quit          # stop a running overlay
 EOF

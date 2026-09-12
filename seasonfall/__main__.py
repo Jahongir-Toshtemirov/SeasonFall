@@ -115,6 +115,16 @@ def run_settings() -> int:
     app.setApplicationName("SeasonFall")
     app.setWindowIcon(settings_gui.app_icon())
     first_run = not Config.exists() or not Config.load().first_run_done
+    if first_run:
+        # first bootstrap → also put SeasonFall into the OS app list
+        try:
+            from . import appinstall
+            for line in appinstall.install():
+                log(line)
+            log("open 'SeasonFall' from your app list any time — no terminal needed")
+        except Exception as exc:  # never block the GUI on registration
+            from .util import dbg
+            dbg("app-list registration failed:", exc)
     win = settings_gui.SettingsWindow(first_run=first_run)
     win.show()
     return app.exec()
@@ -167,6 +177,9 @@ def cmd_uninstall(assume_yes: bool) -> int:
     send_command("quit")
     ok, where = startup.disable()
     print(f"startup: disabled ({where})" if ok else f"startup: {where}")
+    from . import appinstall
+    for path in appinstall.remove():
+        print("removed:", path)
     import shutil
     shutil.rmtree(config_dir(), ignore_errors=True)
     print("settings removed:", config_dir())
@@ -174,37 +187,17 @@ def cmd_uninstall(assume_yes: bool) -> int:
     return 0
 
 
-def cmd_menu() -> int:
-    if not is_linux():
-        print("'menu' is only supported on Linux (Windows/macOS handle shortcuts natively).")
+def cmd_install_app() -> int:
+    """Register SeasonFall in the OS application list (GUI launcher)."""
+    from . import appinstall
+    try:
+        for line in appinstall.install():
+            print("✓", line)
+        print("Launch 'SeasonFall' from your app list — no terminal needed.")
+        return 0
+    except Exception as exc:
+        print("app-list registration failed:", exc)
         return 1
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
-    from . import settings_gui
-
-    _app = QApplication([])
-    icon_path = config_dir() / "icon.png"
-    config_dir().mkdir(parents=True, exist_ok=True)
-    settings_gui.app_icon().pixmap(256, 256).save(str(icon_path), "PNG")
-
-    apps_dir = Path.home() / ".local" / "share" / "applications"
-    apps_dir.mkdir(parents=True, exist_ok=True)
-    python = os.path.abspath(sys.executable)
-    desktop = apps_dir / "seasonfall.desktop"
-    desktop.write_text(
-        "[Desktop Entry]\n"
-        "Type=Application\n"
-        "Version=1.0\n"
-        "Name=SeasonFall\n"
-        "Comment=Falling seasons for your desktop (snow, petals, sparks, leaves)\n"
-        f"Exec=\"{python}\" -m seasonfall settings\n"
-        f"Icon={icon_path}\n"
-        "Terminal=false\n"
-        "Categories=Utility;Amusement;\n",
-        encoding="utf-8")
-    subprocess.run(["update-desktop-database", str(apps_dir)], capture_output=True)
-    print(f"menu entry installed: {desktop}")
-    return 0
 
 
 def cmd_smoke() -> int:
@@ -278,10 +271,10 @@ def build_parser() -> argparse.ArgumentParser:
                     "(snow ❄, petals 🌸, sparks ☀, leaves 🍂, holiday specials 🎄🎃💖)")
     p.add_argument("command", nargs="?", default=None,
                    choices=["settings", "overlay", "start", "quit", "pause",
-                            "resume", "status", "startup", "menu", "smoke",
-                            "uninstall"],
+                            "resume", "status", "startup", "install", "menu",
+                            "smoke", "uninstall"],
                    help="settings / overlay / quit / pause / resume / status / "
-                        "startup / menu / smoke / uninstall")
+                        "startup / install (app list) / smoke / uninstall")
     p.add_argument("arg", nargs="?", default=None,
                    help="argument for 'startup' (on | off | status)")
     p.add_argument("--season", choices=list(SEASON_KEYS), default=None)
@@ -317,8 +310,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_startup(args.arg or "status")
     if cmd == "uninstall":
         return cmd_uninstall(assume_yes=args.yes)
-    if cmd == "menu":
-        return cmd_menu()
+    if cmd in ("install", "menu"):   # 'menu' kept as a friendly alias
+        return cmd_install_app()
     if cmd == "settings":
         return run_settings()
     if cmd in ("overlay", "start"):
@@ -334,13 +327,17 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "pause":
         _ipc_app()
         from .ipc import send_command
-        send_command("pause")
+        if send_command("pause") is None:
+            print("overlay is not running")
+            return 1
         print("paused")
         return 0
     if cmd == "resume":
         _ipc_app()
         from .ipc import send_command
-        send_command("resume")
+        if send_command("resume") is None:
+            print("overlay is not running")
+            return 1
         print("resumed")
         return 0
     if cmd == "status":

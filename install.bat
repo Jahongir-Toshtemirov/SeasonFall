@@ -23,7 +23,11 @@ if errorlevel 1 (
 )
 echo ==^> PySide6 OK
 
+echo ==^> Adding SeasonFall to the Start Menu ...
+%PYBIN% -m seasonfall install
+
 if "%1"=="--startup" %PYBIN% -m seasonfall startup on
 
 echo.
-echo SeasonFall is ready!  Run:  run.bat
+echo SeasonFall is installed!  Open "SeasonFall" from the Start Menu (no console).
+echo Terminal commands:  run.bat settings ^| overlay ^| startup on ^| quit
