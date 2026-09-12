@@ -42,6 +42,18 @@ the window closes itself and the season begins to fall. 🍃
 
 ## 🚀 Install & run
 
+### 📦 Ready-made packages (recommended — no Python needed)
+
+See the [`releases/`](releases/) folder and the GitHub **Releases** page:
+
+| OS | File | Install |
+|---|---|---|
+| 🐧 Linux (Debian/Ubuntu) | `SeasonFall_*_amd64.deb` | `sudo apt install ./SeasonFall_*_amd64.deb` → launch **SeasonFall** from the app grid |
+| 🪟 Windows | `SeasonFall-Windows.exe` | double-click (portable single file) |
+| 🍎 macOS | `SeasonFall-macOS.zip` | unzip → drag `SeasonFall.app` into Applications |
+
+### From source
+
 ### Linux
 ```bash
 ./install.sh          # or: bash install.sh

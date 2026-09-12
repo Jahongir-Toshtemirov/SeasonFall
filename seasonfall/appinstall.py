@@ -14,8 +14,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import __version__
 from .config import config_dir
-from .util import is_linux, is_macos, is_windows
+from .util import is_frozen, is_linux, is_macos, is_windows
 
 
 def repo_root() -> str:
@@ -67,12 +68,18 @@ def _install_linux(icons: dict) -> list[str]:
     apps_dir = Path.home() / ".local" / "share" / "applications"
     apps_dir.mkdir(parents=True, exist_ok=True)
     desktop = apps_dir / "seasonfall.desktop"
-    runsh = Path(repo_root()) / "run.sh"
-    try:
-        runsh.chmod(runsh.stat().st_mode | 0o755)
-    except OSError:
-        pass
     icon = icons.get("png", "")
+    if is_frozen():
+        exec_line = f'Exec="{os.path.abspath(sys.executable)}"\n'
+        path_line = ""
+    else:
+        runsh = Path(repo_root()) / "run.sh"
+        try:
+            runsh.chmod(runsh.stat().st_mode | 0o755)
+        except OSError:
+            pass
+        exec_line = f'Exec="{runsh}" settings\n'
+        path_line = f"Path={repo_root()}\n"
     desktop.write_text(
         "[Desktop Entry]\n"
         "Type=Application\n"
@@ -81,8 +88,8 @@ def _install_linux(icons: dict) -> list[str]:
         "GenericName=Falling Seasons\n"
         "Comment=Snow, petals, sparks and leaves over your desktop\n"
         "Keywords=snow;season;overlay;winter;autumn;desktop;\n"
-        f"Exec=\"{runsh}\" settings\n"
-        f"Path={repo_root()}\n"
+        f"{exec_line}"
+        f"{path_line}"
         f"Icon={icon}\n"
         "Terminal=false\n"
         "StartupWMClass=SeasonFall\n"
@@ -108,13 +115,23 @@ def _install_windows(icons: dict) -> list[str]:
         python = str(pythonw)
     ico = icons.get("ico", "")
 
+    if is_frozen():
+        # Packaged .exe: launch directly, no console, no repo working dir.
+        target = os.path.abspath(sys.executable)
+        arguments = "settings"
+        workdir = str(Path.home())
+    else:
+        target = python
+        arguments = "-m seasonfall settings"
+        workdir = repo_root()
+
     icon_part = f"$s.IconLocation = '{ico}, 0'; " if ico else ""
     ps_script = (
         "$ws = New-Object -ComObject WScript.Shell; "
         f"$s = $ws.CreateShortcut('{lnk}'); "
-        f"$s.TargetPath = '{python}'; "
-        "$s.Arguments = '-m seasonfall settings'; "
-        f"$s.WorkingDirectory = '{repo_root()}'; "
+        f"$s.TargetPath = '{target}'; "
+        f"$s.Arguments = '{arguments}'; "
+        f"$s.WorkingDirectory = '{workdir}'; "
         f"{icon_part}"
         "$s.Description = 'SeasonFall - falling seasons for your desktop'; "
         "$s.Save()"
@@ -139,7 +156,7 @@ _PLIST = """<?xml version="1.0" encoding="UTF-8"?>
     <key>CFBundleExecutable</key>      <string>SeasonFall</string>
     <key>CFBundleIconFile</key>        <string>{iconfile}</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
-    <key>CFBundleShortVersionString</key> <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key> <string>{version}</string>
     <key>CFBundleInfoDictionaryVersion</key> <string>6.0</string>
     <key>NSHighResolutionCapable</key> <true/>
 </dict>
@@ -148,6 +165,10 @@ _PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def _install_macos(icons: dict) -> list[str]:
+    if is_frozen():
+        # PyInstaller --windowed already produced a real .app bundle.
+        bundle = Path(sys.executable).resolve().parents[2]
+        return [f"app bundle → {bundle}"]
     app_root = Path.home() / "Applications" / "SeasonFall.app"
     contents = app_root / "Contents"
     (contents / "MacOS").mkdir(parents=True, exist_ok=True)
@@ -170,7 +191,7 @@ def _install_macos(icons: dict) -> list[str]:
         iconfile = "SeasonFall.png"
 
     (contents / "Info.plist").write_text(
-        _PLIST.format(iconfile=iconfile), encoding="utf-8")
+        _PLIST.format(iconfile=iconfile, version=__version__), encoding="utf-8")
     return [f"macOS app → {app_root}"]
 
 

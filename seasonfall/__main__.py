@@ -21,7 +21,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import SEASON_KEYS, Config, config_dir
-from .util import is_linux, log
+from .util import is_frozen, is_linux, log
 
 
 def _linux_prefer_xcb() -> None:
@@ -33,6 +33,12 @@ def _linux_prefer_xcb() -> None:
         os.environ["QT_QPA_PLATFORM"] = os.environ["SEASONFALL_QPA"]
         return
     if os.environ.get("QT_QPA_PLATFORM"):
+        return
+    if is_frozen():
+        # A frozen binary can't re-probe itself via a python subprocess.
+        # The .deb declares the xcb runtime libs; try XWayland first and let
+        # Qt fall back to native Wayland if xcb is unavailable.
+        os.environ["QT_QPA_PLATFORM"] = "xcb;wayland"
         return
     probe = ("import sys; from PySide6.QtWidgets import QApplication; "
              "app = QApplication(sys.argv[:1]); print(app.platformName())")

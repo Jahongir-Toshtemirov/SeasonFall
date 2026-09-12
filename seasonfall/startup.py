@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .util import is_linux, is_macos, is_windows
+from .util import is_frozen, is_linux, is_macos, is_windows
 
 WIN_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 WIN_VALUE = "SeasonFall"
@@ -14,12 +14,15 @@ PLIST_LABEL = "com.seasonfall.app"
 
 
 def launch_command() -> list[str]:
+    if is_frozen():
+        # Packaged binary (.deb / .exe / .app): the executable IS the app.
+        return [os.path.abspath(sys.executable), "overlay"]
     python = os.path.abspath(sys.executable)
     if is_windows():
         pythonw = Path(python).with_name("pythonw.exe")
         if pythonw.exists():
             python = str(pythonw)
-    return [python, "-m", "seasonfall", "--overlay"]
+    return [python, "-m", "seasonfall", "overlay"]
 
 
 def _repo_root() -> str:
@@ -58,8 +61,19 @@ Type=Application
 Version=1.0
 Name=SeasonFall
 Comment=Falling seasons for your desktop (snow, petals, sparks, leaves)
-Exec="{runsh}" --overlay
+Exec="{runsh}" overlay
 Path={repo}
+Terminal=false
+X-GNOME-Autostart-enabled=true
+Categories=Utility;Amusement;
+"""
+
+_DESKTOP_FROZEN_TEMPLATE = """[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SeasonFall
+Comment=Falling seasons for your desktop (snow, petals, sparks, leaves)
+Exec="{exe}" overlay
 Terminal=false
 X-GNOME-Autostart-enabled=true
 Categories=Utility;Amusement;
@@ -73,9 +87,7 @@ _PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
     <string>{label}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>cd "{repo}" &amp;&amp; exec "{python}" -m seasonfall --overlay</string>
+{args}
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -84,6 +96,15 @@ _PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>
 """
+
+
+def _plist_arguments() -> list[str]:
+    """ProgramArguments for the macOS LaunchAgent (frozen-aware)."""
+    if is_frozen():
+        return [os.path.abspath(sys.executable), "overlay"]
+    return ["/bin/bash", "-c",
+            f'cd "{_repo_root()}" && exec "{launch_command()[0]}" '
+            f'-m seasonfall overlay']
 
 
 def is_enabled() -> bool:
@@ -109,30 +130,42 @@ def enable() -> tuple[bool, str]:
         if is_windows():
             import winreg
 
-            vbs = _windows_vbs()
-            wscript = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "wscript.exe"
-            value = f'"{wscript}" "{vbs}"'
+            if is_frozen():
+                # The packaged .exe is windowless — launch it directly.
+                value = f'"{os.path.abspath(sys.executable)}" overlay'
+                where = "the SeasonFall app (Windows Run key)"
+            else:
+                vbs = _windows_vbs()
+                wscript = (Path(os.environ.get("WINDIR", r"C:\Windows"))
+                           / "System32" / "wscript.exe")
+                value = f'"{wscript}" "{vbs}"'
+                where = "Windows registry Run key (invisible launcher)"
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, WIN_RUN_KEY) as key:
                 winreg.SetValueEx(key, WIN_VALUE, 0, winreg.REG_SZ, value)
-            return True, "Windows registry Run key (invisible launcher)"
+            return True, where
         if is_macos():
-            cmd = launch_command()
+            args = "\n".join(f"        <string>{part}</string>"
+                             for part in _plist_arguments())
             plist = _macos_plist()
             plist.parent.mkdir(parents=True, exist_ok=True)
             plist.write_text(_PLIST_TEMPLATE.format(
-                label=PLIST_LABEL, repo=repo, python=cmd[0]), encoding="utf-8")
+                label=PLIST_LABEL, args=args), encoding="utf-8")
             subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
             subprocess.run(["launchctl", "load", str(plist)], capture_output=True)
             return True, "macOS LaunchAgent"
-        runsh = Path(repo) / "run.sh"
-        try:
-            runsh.chmod(runsh.stat().st_mode | 0o755)
-        except OSError:
-            pass
         path = _linux_autostart_dir() / "seasonfall.desktop"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_DESKTOP_TEMPLATE.format(runsh=runsh, repo=repo),
-                        encoding="utf-8")
+        if is_frozen():
+            path.write_text(_DESKTOP_FROZEN_TEMPLATE.format(
+                exe=os.path.abspath(sys.executable)), encoding="utf-8")
+        else:
+            runsh = Path(repo) / "run.sh"
+            try:
+                runsh.chmod(runsh.stat().st_mode | 0o755)
+            except OSError:
+                pass
+            path.write_text(_DESKTOP_TEMPLATE.format(runsh=runsh, repo=repo),
+                            encoding="utf-8")
         return True, f"XDG autostart ({path})"
     except Exception as exc:
         return False, str(exc)

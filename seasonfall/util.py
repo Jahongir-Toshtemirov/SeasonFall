@@ -27,3 +27,8 @@ def is_macos() -> bool:
 
 def is_linux() -> bool:
     return sys.platform.startswith("linux")
+
+
+def is_frozen() -> bool:
+    """True when running from a packaged bundle (.deb binary / .exe / .app)."""
+    return bool(getattr(sys, "frozen", False))
