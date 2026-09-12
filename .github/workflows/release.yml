@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt pyinstaller pillow
 
       - name: Fetch ICU (Qt 6.11 needs it; bundle for older Windows builds)
         if: matrix.name == 'windows'
@@ -62,7 +62,7 @@ jobs:
         if: matrix.name == 'macos'
         run: >
           pyinstaller --noconfirm --clean --onedir --windowed
-          --name SeasonFall --icon packaging/seasonfall.ico
+          --name SeasonFall --icon packaging/seasonfall.icns
           --osx-bundle-identifier com.seasonfall.app
           --paths . packaging/entrypoint.py
 
