@@ -5,7 +5,8 @@ Ready-to-run SeasonFall packages — **no Python, no terminal needed**.
 | OS | File | How to install / run |
 |---|---|---|
 | 🐧 **Linux** (Debian/Ubuntu) | `SeasonFall_<version>_amd64.deb` | `sudo apt install ./SeasonFall_*_amd64.deb` — then launch **SeasonFall** from your app grid (right-click → *Season Settings* to configure) |
-| 🪟 **Windows** | `SeasonFall-Windows-portable.zip` | unzip anywhere → double-click **Start SeasonFall.bat** (first run downloads the toolkit once, ~70 MB; after that fully offline). A single-file `SeasonFall-Windows.exe` is built by CI (below) |
+| 🪟 **Windows** | `SeasonFall-Windows.exe` | double-click — single file, nothing to install, fully offline |
+| 🪟 **Windows** (alt.) | `SeasonFall-Windows-portable.zip` | unzip anywhere → double-click **Start SeasonFall.bat** (first run downloads the toolkit once, ~70 MB) |
 | 🍎 **macOS** | `SeasonFall-macOS.zip` | unzip → double-click **SeasonFall.app** (right-click → *Open* the first time for Gatekeeper). Auto-installs its toolkit into your user Python on first run (~70 MB, needs internet once; if macOS asks to install *Command Line Tools*, accept — that provides `python3`). A fully self-contained `.app` is also built by CI (below) |
 
 > **Why is the Windows file a zip?** Windows/macOS executables cannot be
