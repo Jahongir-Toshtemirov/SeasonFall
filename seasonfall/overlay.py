@@ -35,7 +35,7 @@ class SeasonOverlay(QWidget):
         else:
             self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setWindowTitle("SeasonFall")
-        self.field = ParticleField(cfg, manager.spec, seed=manager.next_seed())
+        self.field = ParticleField(cfg, manager.specs, seed=manager.next_seed())
         g = screen.geometry()
         self.setGeometry(g)
         self.field.resize(g.width(), g.height())
@@ -62,9 +62,10 @@ class OverlayManager(QObject):
     def __init__(self, cfg: Config, parent=None):
         super().__init__(parent)
         self.cfg = cfg
-        self.spec = S.resolve_season(cfg)
+        self.specs = S.active_mix(cfg)
         self.windows: list[SeasonOverlay] = []
         self.paused = False
+        self.running = False
         self.fps = 0.0
         self.frame_ms = 0.0
         self._battery_paused = False
@@ -101,8 +102,10 @@ class OverlayManager(QObject):
         self.timer.start()
         self.battery_timer.start()
         self._check_battery()
+        self.running = True
 
     def stop(self) -> None:
+        self.running = False
         self.timer.stop()
         self.battery_timer.stop()
         for w in self.windows:
@@ -135,11 +138,11 @@ class OverlayManager(QObject):
 
     def apply_config(self, cfg: Config) -> None:
         self.cfg = cfg
-        self.spec = S.resolve_season(cfg)
+        self.specs = S.active_mix(cfg)
         self.timer.setInterval(self._interval())
         for w in self.windows:
             w.field.set_config(cfg)
-            w.field.set_season(self.spec)
+            w.field.set_mix(self.specs)
         self._rebuild_windows()
 
     # ---------------- screens / windows ---------------- #
@@ -182,13 +185,15 @@ class OverlayManager(QObject):
             return
         self.frame_ms = dt * 1000.0
         self._ema_ms = self._ema_ms * 0.9 + dt * 1000.0 * 0.1
-        budget = 1000.0 / max(24, min(60, int(self.cfg.fps)))
-        if self._ema_ms > budget * 1.4:
-            for w in self.windows:
-                w.field.load = max(0.35, w.field.load - 0.04)
-        elif self._ema_ms < budget * 0.6:
-            for w in self.windows:
-                w.field.load = min(1.0, w.field.load + 0.02)
+        if self.cfg.adaptive_quality:
+            # optional: shrink the flock under sustained load
+            budget = 1000.0 / max(24, min(60, int(self.cfg.fps)))
+            if self._ema_ms > budget * 1.4:
+                for w in self.windows:
+                    w.field.load = max(0.35, w.field.load - 0.04)
+            elif self._ema_ms < budget * 0.6:
+                for w in self.windows:
+                    w.field.load = min(1.0, w.field.load + 0.02)
         cursor = QCursor.pos()
         for w in self.windows:
             g = w.geometry()
@@ -214,8 +219,10 @@ class OverlayManager(QObject):
             self.resume()
 
     # ---------------- status ---------------- #
+    def season_label(self) -> str:
+        return S.season_label(self.specs)
+
     def stats_text(self) -> str:
         state = "paused" if self.paused else "running"
         n = sum(len(w.field.particles) for w in self.windows)
-        return (f"{state} · {n} particles · {self.fps:.0f} fps · "
-                f"{self.spec.emoji} {self.spec.name}")
+        return f"{state} · {n} particles · {self.fps:.0f} fps · {self.season_label()}"

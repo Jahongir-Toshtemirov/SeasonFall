@@ -84,7 +84,7 @@ def run_overlay(overrides: dict, duration: float | None = None) -> int:
     app.setWindowIcon(settings_gui.app_icon())
 
     status = probe_status()
-    if status:
+    if status and status.get("running"):
         log(f"overlay already running ({status.get('season_name', '?')}) — use "
             f"'python -m seasonfall settings' to change, '... quit' to stop")
         return 0
@@ -243,6 +243,32 @@ def cmd_smoke() -> int:
         print(f"{key:10s} particles={len(field.particles):4d} "
               f"lit={frac * 100:5.1f}%  {flag}  {path}")
 
+    # season mix: winter + spring + autumn fall together
+    cfg = Config(mix=["winter", "spring", "autumn"], holiday_specials=False,
+                 density=95)
+    specs = S.active_mix(cfg, today=date(2026, 9, 12))
+    assert [s.key for s in specs] == ["winter", "spring", "autumn"], specs
+    field = ParticleField(cfg, specs, 640, 400, seed=42)
+    for _ in range(120):
+        field.tick(1 / 60.0, None)
+    kinds = {p.kind for p in field.particles}
+    assert {"snow", "petal", "leaf"} <= kinds, kinds
+    img = QImage(640, 400, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(0)
+    painter = QPainter(img)
+    field.paint(painter, transparent=True)
+    painter.end()
+    img.save(str(out_dir / "mix.png"), "PNG")
+    print(f"mix            particles={len(field.particles):4d} "
+          f"kinds={sorted(kinds)}  OK  {out_dir / 'mix.png'}")
+
+    # constant-count guarantee: heavy load must NOT remove particles
+    n0 = len(field.particles)
+    for _ in range(30):
+        field.tick(0.30, None)          # simulated massive frame spikes
+    assert len(field.particles) == n0, "particle count changed under load!"
+    print("constant count under load      OK")
+
     os.environ["SEASONFALL_CONFIG_DIR"] = str(out_dir / "cfg")
     c1 = Config(season="autumn", density=77)
     c1.save()
@@ -342,7 +368,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if cmd == "status":
         return cmd_status()
-
     # default smart start -------------------------------------------------- #
     if not Config.exists() or not Config.load().first_run_done:
         log("welcome! opening the season picker…")

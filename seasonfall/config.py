@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field as dc_field, fields
 from pathlib import Path
 
 from .util import dbg, is_linux, is_macos, is_windows
@@ -46,7 +46,8 @@ def _clamp(v, lo, hi):
 @dataclass
 class Config:
     # look & feel
-    season: str = "auto"            # SEASON_KEYS
+    season: str = "auto"            # SEASON_KEYS (single; used when mix is empty)
+    mix: list = dc_field(default_factory=list)   # e.g. ["winter","spring","autumn"]
     density: int = 40               # 1..100  — "how much falls"
     speed: float = 1.0              # 0.25..3.0
     wind: int = 0                   # -100..100 (left ↔ right)
@@ -62,9 +63,10 @@ class Config:
     monitors: str = "all"           # MONITOR_KEYS
     quality: str = "high"           # QUALITY_KEYS
     fps: int = 60                   # 24 | 30 | 60
+    adaptive_quality: bool = False  # auto-reduce count under load (off = constant snowfall)
     auto_pause_battery: bool = True # pause when laptop unplugged
     hemisphere: str = "auto"        # HEMISPHERE_KEYS (for season = auto)
-    holiday_specials: bool = True   # 🎄 🎃 💖 take over near the date
+    holiday_specials: bool = True   # 🎄 🎃 💖 join the fall near the date
     # bookkeeping
     first_run_done: bool = False
     startup_prompted: bool = False
@@ -122,6 +124,12 @@ class Config:
             self.monitors = "all"
         if self.hemisphere not in HEMISPHERE_KEYS:
             self.hemisphere = "auto"
+        # mix: keep valid, unique season keys, max 6 layers
+        clean_mix = []
+        for key in self.mix:
+            if key in SEASON_KEYS and key not in clean_mix:
+                clean_mix.append(key)
+        self.mix = clean_mix[:6]
         self.density = int(_clamp(self.density, 1, 100))
         self.speed = _clamp(self.speed, 0.25, 3.0)
         self.wind = int(_clamp(self.wind, -100, 100))

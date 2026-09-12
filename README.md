@@ -27,15 +27,16 @@ the window closes itself and the season begins to fall. 🍃
 | | |
 |---|---|
 | ❄️ **4 seasons + Auto** | Auto follows the calendar (honours your hemisphere) |
-| 🎄 **Holiday specials** | Christmas (gifts, candy canes, snow), Halloween (bats, pumpkins, leaves), Valentine (hearts, petals) — enabled near the date |
+| 🧪 **Mix mode** | Multi-select **any combination** — snow+petals+leaves at the same time; every card toggles, the last one can't be removed |
+| 🎄 **Holiday surprises** | Christmas (gifts, candy canes, snow), Halloween (bats, pumpkins, leaves), Valentine (hearts, petals) — join *any* mix near the date |
 | 🌸 **Per-season particles** | 6-arm dendrite snowflakes, soft slush, frost twinkles, cherry petals, spring drizzle, sun sparks, heat glitter, fireflies, tumbling leaves, glowing golden leaves, hearts, bats, pumpkins, gifts, candy canes |
-| 🎚️ **Full control** | Intensity, speed, wind, size/thickness, opacity, sway, golden-leaf share, FPS cap, quality presets |
+| ♾️ **Infinite & constant** | Particle count **never** changes — not on heavy load, not over hours. Sub-stepped physics keeps motion exact even if FPS drops; a sprite-cache renderer blits pre-rendered shapes instead of redrawing vectors |
+| 🎚️ **Full control** | Intensity, speed, wind, size/thickness, opacity, sway, golden-leaf share, FPS cap, quality presets, optional adaptive quality (off by default) |
 | 🖱️ **Alive** | Wind gusts, depth parallax, 3D leaf tumbling, cursor pushes particles around |
-| 🪟 **Desktop friendly** | Click-through overlay (clicks land on your apps), multi-monitor, primary-monitor mode |
-| 🔋 **Considerate** | Auto-pauses on battery, adaptive quality keeps the FPS budget |
-| 🚀 **Startup apps** | One-click login autostart: Windows registry, macOS LaunchAgent, XDG autostart |
-| 🎛️ **Live everything** | Live preview in the GUI, live-reload of a running overlay (IPC), single-instance safe |
-| 🧰 **CLI** | `settings`, `overlay`, `pause`, `resume`, `quit`, `status`, `startup on/off`, `menu`, `uninstall`, `smoke` |
+| 🪟 **Desktop friendly** | Click-through overlay (clicks land on your apps), multi-monitor, primary-monitor mode, single-instance guaranteed (a second start *adopts* the running one instead of doubling) |
+| 🔋 **Considerate** | Auto-pauses on battery (optional), claymorphism UI with live preview |
+| 🚀 **Startup apps** | One-click login autostart: Windows registry (invisible VBS launcher), macOS LaunchAgent, XDG autostart |
+| 🧰 **CLI** | `settings`, `overlay`, `pause`, `resume`, `quit`, `status`, `startup on/off`, `install`, `uninstall`, `smoke` |
 
 ---
 
@@ -148,6 +149,75 @@ SeasonFall.py ──▶ seasonfall/__main__.py ──▶ settings_gui.py (config
 - **Adaptive quality** — frame-time EMA vs. FPS budget silently scales particle count
 - **Single instance** — a local socket (`seasonfall-<user>`) carries
   `reload / pause / resume / quit / status`
+
+## 🖥️ How it works on each OS (full chain)
+
+### 🐧 Linux
+```
+install.sh
+  ├─ no python3?        → installs python3 + venv + pip (apt / dnf / pacman / zypper, sudo)
+  ├─ creates .venv      → pip installs PySide6 into it (falls back to pip --user)
+  ├─ installs xcb libs  → libxcb-cursor0, icccm4, image0, keysyms1, render-util0,
+  │                       xinerama0, shape0  (needed by Qt's xcb plugin)
+  └─ registers the app  → ~/.local/share/applications/seasonfall.desktop + icon.png
+Overlay runtime
+  ├─ Qt platform = xcb  → the overlay is an X11 window even on GNOME/KDE-Wayland,
+  │                       drawn by **XWayland**: real positioning, keep-above
+  │                       (_NET_WM_STATE_ABOVE) and click-through (empty input region)
+  ├─ one frameless ARGB QWidget per monitor (WA_TranslucentBackground + Tool +
+  │   WindowStaysOnTopHint + WindowTransparentForInput)
+  ├─ QPainter paints cached sprite pixmaps with per-particle opacity/rotation
+  └─ autostart: ~/.config/autostart/seasonfall.desktop → run.sh --overlay
+```
+Notes: works on X11 sessions natively; on Wayland it rides XWayland (GNOME/KDE
+compose ARGB X11 windows with true per-pixel alpha).
+
+### 🍎 macOS
+```
+install.sh (or double-click SeasonFall.command)
+  ├─ no python3?        → triggers xcode-select --install (system popup) and waits
+  ├─ creates .venv      → pip installs PySide6 (macOS arm64/x86_64 wheels)
+  └─ registers the app  → ~/Applications/SeasonFall.app
+                          Contents/MacOS/SeasonFall (bash launcher → venv python)
+                          Contents/Info.plist + .icns/.png icon
+Overlay runtime
+  ├─ frameless translucent NSWindow via Qt: WindowStaysOnTopHint → floating level,
+  │   WindowTransparentForInput → NSWindow.ignoresMouseEvents = true (click-through)
+  ├─ the app list entry opens the settings GUI (normal window, Dock icon)
+  └─ autostart: ~/Library/LaunchAgents/com.seasonfall.app.plist (RunAtLoad) →
+      bash -c 'cd <repo> && exec <venv-python> -m seasonfall --overlay'
+```
+Notes: the overlay shows above normal windows; macOS keeps true full-screen
+spaces on top of it (that's an OS rule).
+
+### 🪟 Windows
+```
+install.bat (right-click → Run)
+  ├─ no Python?         → winget install Python.Python.3.12
+  │                       fallback: downloads python.org installer silently
+  │                       (/quiet InstallAllUsers=0 PrependPath=1)
+  ├─ creates .venv      → pip installs PySide6 (Windows wheels)
+  └─ registers the app  → Start Menu shortcut "SeasonFall.lnk"
+                          TargetPath = pythonw.exe (GUI only — NO console window)
+                          Icon = generated .ico, WorkingDirectory = repo
+Overlay runtime
+  ├─ frameless layered window: WS_EX_LAYERED | WS_EX_TRANSPARENT |
+  │   WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE → always-on-top, click-through,
+  │   never steals focus, no taskbar entry
+  ├─ Qt raster engine paints the sprites; DWM composites the per-pixel alpha
+  └─ autostart: HKCU\Software\Microsoft\Windows\CurrentVersion\Run →
+      wscript.exe seasonfall_overlay.vbs (invisible: sets working dir, runs
+      pythonw -m seasonfall --overlay with zero console flash)
+```
+Notes: everything is per-user (HKCU + %APPDATA%) — no admin rights needed.
+
+### The shared core
+```
+config.json (per-user) → OverlayManager → one SeasonOverlay per screen
+ParticleField: fixed population → sub-stepped physics (gusts, sway, tumble,
+mouse repel) → sprite-cache QPainter rendering → update() at the FPS cap
+IPC (named local socket): reload / pause / resume / quit / status
+```
 
 ## 🧪 Self-test
 

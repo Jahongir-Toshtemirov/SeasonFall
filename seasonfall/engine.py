@@ -10,8 +10,8 @@ import random
 from typing import List, Optional, Tuple
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
-from PySide6.QtGui import (QColor, QLinearGradient, QPainter, QPainterPath,
-                           QPen, QPolygonF, QRadialGradient)
+from PySide6.QtGui import (QColor, QPainter, QPainterPath, QPen, QPixmap,
+                           QPolygonF, QRadialGradient)
 
 from . import seasons as S
 
@@ -46,9 +46,12 @@ BASE_SIZE = {
 }
 
 QUALITY_MULT = {"low": 0.35, "medium": 0.6, "high": 1.0, "ultra": 1.5}
-MAX_PARTICLES = 900
+MAX_PARTICLES = 1200
 MOUSE_R = 150.0
 MOUSE_R2 = MOUSE_R * MOUSE_R
+
+# per-kind sprite padding (max extent as a multiple of particle size)
+_SPRITE_PAD = {S.K_GOLDEN: 4.6, S.K_FIREFLY: 5.2}
 
 
 # --------------------------------------------------------------------------- #
@@ -138,9 +141,10 @@ def _zkey(p):
 class ParticleField:
     """Owns every particle, advances physics and paints them."""
 
-    def __init__(self, cfg: Config, spec: S.SeasonSpec,
-                 width: float = 800, height: float = 600, seed: int | None = None):
+    def __init__(self, cfg: Config, spec, width: float = 800, height: float = 600,
+                 seed: int | None = None):
         self.cfg = cfg
+        self.spec = spec  # first spec (compat); full list in self.specs
         self.spec = spec
         self.w = float(width)
         self.h = float(height)
@@ -153,37 +157,37 @@ class ParticleField:
         self.kind_names: list[str] = []
         self.kind_weights: list[float] = []
         self.palettes: dict = {}
-        self._apply_spec(spec)
+        self.specs: list = []
+        self._sprite_cache: dict = {}
+        self._alpha_override: int | None = None
+        specs = list(spec) if isinstance(spec, (list, tuple)) else [spec]
+        self._apply_mix(specs)
         self._populate()
 
     # ------------------------------------------------------------------ #
     #  Configuration
     # ------------------------------------------------------------------ #
-    def _effective_kinds(self, spec: S.SeasonSpec):
-        kinds = list(spec.kinds)
-        if spec.key == "autumn":
-            g = max(0, min(100, int(self.cfg.golden_share)))
-            kinds = [(S.K_LEAF, 100 - g), (S.K_GOLDEN, g)]
-        elif spec.key == "spring" and not self.cfg.rain:
-            kinds = [(S.K_PETAL, 100)]
-        names = [k for k, w in kinds if w > 0]
-        weights = [float(w) for k, w in kinds if w > 0]
-        return names, weights
-
-    def _apply_spec(self, spec: S.SeasonSpec) -> None:
-        self.spec = spec
-        self.kind_names, self.kind_weights = self._effective_kinds(spec)
-        self.palettes = dict(spec.palettes)
+    def _apply_mix(self, specs) -> None:
+        """Blend any number of season specs into one continuous fall."""
+        self.specs = list(specs)
+        self.kind_names, self.kind_weights, self.palettes = S.merge_specs(
+            self.specs, self.cfg)
+        self._sprite_cache.clear()
         for p in self.particles:      # convert existing, keep positions
             self._assign(p, keep_position=True)
 
+    def set_mix(self, specs) -> None:
+        self._apply_mix(specs)
+
     def set_season(self, spec: S.SeasonSpec) -> None:
-        self._apply_spec(spec)
+        self.set_mix([spec])
 
     def set_config(self, cfg: Config) -> None:
         self.cfg = cfg
-        names, weights = self._effective_kinds(self.spec)
-        if names != self.kind_names:
+        names, weights, palettes = S.merge_specs(self.specs, cfg)
+        self.palettes = palettes
+        self._sprite_cache.clear()    # size/opacity-affecting settings changed
+        if names != self.kind_names or weights != self.kind_weights:
             self.kind_names, self.kind_weights = names, weights
             for p in self.particles:
                 self._assign(p, keep_position=True)
@@ -274,8 +278,18 @@ class ParticleField:
     #  Simulation
     # ------------------------------------------------------------------ #
     def tick(self, dt: float, cursor: Optional[Tuple[float, float]]) -> None:
-        dt = max(0.001, min(dt, 0.05))
-        self.t += dt
+        """Advance the field. Sub-steps keep motion exact even when the
+        frame rate drops (heavy load) — particles never slow down or vanish,
+        they just keep falling."""
+        dt = max(0.001, min(dt, 0.5))
+        steps = 1 if dt <= 0.04 else int(min(5, dt / 0.04))
+        sdt = dt / steps
+        for _ in range(steps):
+            self._step(sdt, cursor)
+        self.particles.sort(key=_zkey)
+        self._adjust_population()
+
+    def _step(self, dt: float, cursor: Optional[Tuple[float, float]]) -> None:
         gp = self.t
         self.gust = (0.55 * math.sin(gp * 0.45 + 1.1)
                      + 0.35 * math.sin(gp * 0.13)
@@ -314,7 +328,7 @@ class ParticleField:
             if p.kind == S.K_FIREFLY:
                 p.vy += rnd.uniform(-70, 70) * dt
                 p.vy = max(-32.0, min(32.0, p.vy))
-            # recycle off-screen particles
+            # recycle off-screen particles — count NEVER changes
             if p.rising:
                 if p.y < -80:
                     self._spawn(p)
@@ -325,18 +339,55 @@ class ParticleField:
             elif p.x > self.w + 110:
                 p.x = -90
 
-        particles.sort(key=_zkey)
-        self._adjust_population()
+        self.t += dt
 
     # ------------------------------------------------------------------ #
     #  Rendering
     # ------------------------------------------------------------------ #
     def _alpha(self, p: Particle, extra: float = 1.0) -> int:
+        if self._alpha_override is not None:
+            return self._alpha_override
         a = 255.0 * self.cfg.opacity * (0.35 + 0.65 * p.z) * extra
         if p.tw:
             s = 0.5 + 0.5 * math.sin(self.t * p.tw * 2.0 + p.seed)
             a *= 0.35 + 0.65 * s
         return int(max(0, min(255, a)))
+
+    # ---- sprite cache: every shape is rendered once, then blitted ---- #
+    def _render_sprite(self, kind: str, color: tuple, size: float):
+        """Pre-render one particle shape into a pixmap (2× supersampled).
+
+        Drawing cached pixmaps instead of vector paths per particle per frame
+        is several times faster and keeps the fall smooth under heavy load.
+        """
+        ss = 2.0
+        pad = _SPRITE_PAD.get(kind, 2.8)
+        px = int(math.ceil(size * pad * ss)) + 8
+        pm = QPixmap(px, px)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.translate(px / 2.0, px / 2.0)
+        painter.scale(ss, ss)
+        fake = Particle()
+        fake.kind = kind
+        fake.x = 0.0
+        fake.y = 0.0
+        fake.z = 1.0
+        fake.size = size
+        fake.color = color
+        fake.glow = kind in (S.K_GOLDEN, S.K_FIREFLY)
+        saved_t = self.t
+        if kind == S.K_FIREFLY and KINDS[kind]["tw"]:
+            self.t = (math.pi / 2.0) / (2.0 * KINDS[kind]["tw"])  # bake peak glow
+        self._alpha_override = 255
+        try:
+            self._drawers[kind](painter, fake)
+        finally:
+            self.t = saved_t
+            self._alpha_override = None
+        painter.end()
+        return pm, float(px) / ss
 
     def paint(self, painter: QPainter, transparent: bool = True) -> None:
         painter.save()
@@ -347,12 +398,41 @@ class ParticleField:
             painter.fillRect(rect, QColor(0, 0, 0, 0))
             painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
         else:
-            bg = QLinearGradient(0, 0, 0, self.h)
-            bg.setColorAt(0.0, QColor("#101426"))
-            bg.setColorAt(1.0, QColor("#1b2340"))
+            bg = QColor("#223047")
             painter.fillRect(rect, bg)
+        cache = self._sprite_cache
+        tumble = self.cfg.tumble
         for p in self.particles:
-            self._drawers[p.kind](painter, p)
+            if p.kind == S.K_RAIN:          # streaks stay vector (cheap)
+                self._d_rain(painter, p)
+                continue
+            bucket = max(2, int(round(p.size)))
+            key = (p.kind, p.color, bucket)
+            entry = cache.get(key)
+            if entry is None:
+                entry = self._render_sprite(p.kind, p.color, float(bucket))
+                cache[key] = entry
+            pm, logical = entry
+            painter.save()
+            painter.translate(p.x, p.y)
+            if p.kind == S.K_BAT:
+                flap = 0.55 + 0.45 * abs(math.sin(self.t * 9.0 + p.seed))
+                painter.rotate(10.0 * math.sin(self.t * 2.2 + p.seed))
+                painter.scale(1.0, flap)
+            elif p.kind == S.K_HEART:
+                painter.rotate(8.0 * math.sin(self.t * 1.5 + p.seed))
+            else:
+                if p.rot and tumble:
+                    painter.rotate(p.rot)
+                if p.flip_spd:
+                    painter.scale(0.3 + 0.7 * abs(math.cos(p.flip)), 1.0)
+            painter.setOpacity(self._alpha(p) / 255.0)
+            painter.drawPixmap(QRectF(-logical / 2.0, -logical / 2.0,
+                                      logical, logical),
+                               pm,
+                               QRectF(0.0, 0.0, float(pm.width()),
+                                      float(pm.height())))
+            painter.restore()
         painter.restore()
 
     @property

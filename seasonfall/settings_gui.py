@@ -1,27 +1,42 @@
-"""SeasonFall settings GUI: season cards, sliders, live preview, startup prompt."""
+"""SeasonFall settings GUI — claymorphism edition: soft, chunky, tactile."""
 from __future__ import annotations
 
 import math
 import subprocess
 import sys
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import (QColor, QIcon, QLinearGradient, QPainter, QPen,
-                           QPixmap)
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QGridLayout,
-                               QHBoxLayout, QLabel, QMainWindow, QMessageBox,
-                               QPushButton, QScrollArea, QSlider, QVBoxLayout,
-                               QWidget)
+                               QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
+                               QMainWindow, QMessageBox, QPushButton, QSlider,
+                               QVBoxLayout, QWidget)
 
 from . import seasons as S
 from . import startup
-from .config import Config, config_dir, config_path
+from .config import Config, config_dir
 from .engine import ParticleField
-from .ipc import probe_status, send_command
+from .ipc import IpcServer, probe_status, send_command
 from .overlay import OverlayManager
-from .util import is_linux
 
 MAX_SLIDER = 1000  # internal resolution for smooth float sliders
+
+# --------------------------------------------------------------------------- #
+#  Claymorphism palette — warm clay, no gradients, soft depth via shadows
+# --------------------------------------------------------------------------- #
+CLAY_BG = "#EFE7DA"
+CLAY_PANEL = "#FBF4E8"
+CLAY_CARD = "#F3E9D7"
+CLAY_EDGE = "#E3D4B8"
+CLAY_TEXT = "#4A4034"
+CLAY_MUTED = "#988C7A"
+PREVIEW_SKY = "#223047"
+
+ACCENTS = {
+    "auto": "#3FAE90", "winter": "#5FB4E5", "spring": "#F27BA8",
+    "summer": "#FFAF3C", "autumn": "#EE8A1F", "halloween": "#9575DE",
+    "christmas": "#E05A5A", "valentine": "#F56A94",
+}
 
 
 def app_icon() -> QIcon:
@@ -30,22 +45,19 @@ def app_icon() -> QIcon:
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    grad = QLinearGradient(0, 0, 256, 256)
-    grad.setColorAt(0.0, QColor("#1c2748"))
-    grad.setColorAt(1.0, QColor("#0d1220"))
-    p.setBrush(grad)
+    p.setBrush(QColor("#5FB4E5"))
     p.setPen(Qt.PenStyle.NoPen)
-    p.drawRoundedRect(QRectF(8, 8, 240, 240), 56, 56)
-    pen = QPen(QColor("#9fdcff"), 10)
+    p.drawRoundedRect(QRectF(8, 8, 240, 240), 64, 64)
+    pen = QPen(QColor("#FFFFFF"), 11)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     p.setPen(pen)
     cx = cy = 128.0
     for i in range(6):
         a = math.radians(i * 60)
         ca, sa = math.cos(a), math.sin(a)
-        p.drawLine(QPointF(cx, cy), QPointF(cx + ca * 84, cy + sa * 84))
+        p.drawLine(QPointF(cx, cy), QPointF(cx + ca * 82, cy + sa * 82))
         for bf in (0.45, 0.72):
-            bx, by = cx + ca * 84 * bf, cy + sa * 84 * bf
+            bx, by = cx + ca * 82 * bf, cy + sa * 82 * bf
             for da in (math.radians(52), -math.radians(52)):
                 p.drawLine(QPointF(bx, by),
                            QPointF(bx + math.cos(a + da) * 26,
@@ -54,42 +66,61 @@ def app_icon() -> QIcon:
     return QIcon(pm)
 
 
+def _clay(widget: QWidget, blur: int = 20, dy: int = 6, alpha: int = 60) -> None:
+    """Give a widget the soft 'clay' drop shadow."""
+    effect = QGraphicsDropShadowEffect(widget)
+    effect.setBlurRadius(blur)
+    effect.setOffset(0, dy)
+    effect.setColor(QColor(96, 74, 48, alpha))
+    widget.setGraphicsEffect(effect)
+
+
 def build_qss(accent: str) -> str:
     return f"""
-QWidget {{ background: #12141d; color: #e7eaf3; font-size: 13px; }}
+QWidget {{ background: {CLAY_BG}; color: {CLAY_TEXT}; font-size: 13px; }}
 QLabel {{ background: transparent; }}
-QMainWindow, QDialog {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
-    stop:0 #0e1119, stop:1 #141a2b); }}
-QLabel#h1 {{ font-size: 22px; font-weight: 700; }}
-QLabel#h2 {{ font-size: 14px; font-weight: 600; color: #aab3cc; }}
-QLabel#muted {{ color: #8a92ab; font-size: 12px; }}
-QFrame#card {{ background: #191e2e; border: 1px solid #272e45; border-radius: 12px; }}
-QFrame#cardOn {{ background: #1f2540; border: 2px solid {accent}; border-radius: 12px; }}
-QFrame#panel {{ background: #171b29; border: 1px solid #262c42; border-radius: 12px; }}
-QLabel#seasonEmoji {{ font-size: 26px; background: transparent; }}
-QPushButton {{ background: #232a44; border: 1px solid #313a5c; border-radius: 9px;
-    padding: 9px 16px; font-weight: 500; }}
-QPushButton:hover {{ background: #2b3354; }}
-QPushButton:disabled {{ color: #666e88; background: #1a1f31; }}
-QPushButton#primary {{ background: {accent}; color: #0a0d16; font-weight: 700;
-    border: none; }}
-QPushButton#danger {{ background: #3a2030; border-color: #5c2f42; }}
-QSlider::groove:horizontal {{ height: 6px; background: #2a3050; border-radius: 3px; }}
-QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 3px; }}
-QSlider::handle:horizontal {{ width: 16px; height: 16px; margin: -6px 0;
-    border-radius: 8px; background: #e8ecf7; }}
-QComboBox {{ background: #1d2338; border: 1px solid #2e3654; border-radius: 8px;
-    padding: 6px 10px; min-width: 110px; }}
-QComboBox QAbstractItemView {{ background: #1d2338; border: 1px solid #2e3654;
-    selection-background-color: {accent}; selection-color: #0a0d16; }}
-QCheckBox {{ spacing: 8px; }}
-QCheckBox::indicator {{ width: 17px; height: 17px; border-radius: 5px;
-    border: 1px solid #3a4468; background: #1d2338; }}
-QCheckBox::indicator:checked {{ background: {accent}; border-color: {accent}; }}
-QScrollArea {{ border: none; background: transparent; }}
-QMessageBox {{ background: #171b29; }}
-QLabel#chip {{ background: #1d2338; border-radius: 10px; padding: 4px 10px;
-    color: #9aa3bd; }}
+QMainWindow {{ background: {CLAY_BG}; }}
+QLabel#h1 {{ font-size: 22px; font-weight: 800; }}
+QLabel#h2 {{ font-size: 14px; font-weight: 700; color: #6B5F4E; }}
+QLabel#muted {{ color: {CLAY_MUTED}; font-size: 12px; }}
+QFrame#panel {{ background: {CLAY_PANEL};
+    border: 1px solid {CLAY_EDGE}; border-radius: 20px; }}
+QFrame#card {{ background: {CLAY_CARD};
+    border: 1px solid {CLAY_EDGE}; border-radius: 16px; }}
+QFrame#cardOn {{ background: #FFFFFF;
+    border: 2px solid {accent}; border-radius: 16px; }}
+QLabel#seasonEmoji {{ font-size: 24px; background: transparent; }}
+QPushButton {{ background: {CLAY_CARD}; border: 1px solid {CLAY_EDGE};
+    border-radius: 14px; padding: 10px 18px; font-weight: 600;
+    color: {CLAY_TEXT}; }}
+QPushButton:hover {{ background: #FBF3E4; }}
+QPushButton:disabled {{ color: #B7AB97; background: #EFE5D2; }}
+QPushButton#primary {{ background: {accent}; color: #FFFFFF;
+    border: none; font-weight: 800; }}
+QPushButton#primary:hover {{ background: {accent}; }}
+QPushButton#danger {{ background: #F6DADA; border-color: #E8BFBF;
+    color: #8C3B3B; }}
+QSlider::groove:horizontal {{ height: 10px; background: #E9DCC5;
+    border-radius: 5px; }}
+QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 5px; }}
+QSlider::handle:horizontal {{ width: 22px; height: 22px; margin: -7px 0;
+    border-radius: 11px; background: #FFF9EF; border: 2px solid {accent}; }}
+QComboBox {{ background: #F6EDDD; border: 1px solid {CLAY_EDGE};
+    border-radius: 12px; padding: 7px 12px; min-width: 110px;
+    font-weight: 600; }}
+QComboBox:hover {{ background: #FBF3E4; }}
+QComboBox QAbstractItemView {{ background: {CLAY_PANEL};
+    border: 1px solid {CLAY_EDGE}; color: {CLAY_TEXT};
+    selection-background-color: {accent}; selection-color: #FFFFFF; }}
+QCheckBox {{ spacing: 9px; font-weight: 500; }}
+QCheckBox::indicator {{ width: 20px; height: 20px; border-radius: 7px;
+    border: 2px solid #DCCCAE; background: #F6EDDD; }}
+QCheckBox::indicator:checked {{ background: {accent};
+    border-color: {accent}; }}
+QLabel#chip {{ background: {CLAY_CARD}; border-radius: 12px;
+    padding: 6px 12px; color: #6B5F4E; font-weight: 600; }}
+QMessageBox {{ background: {CLAY_PANEL}; }}
+QMessageBox QLabel {{ color: {CLAY_TEXT}; background: transparent; }}
 """
 
 
@@ -102,11 +133,11 @@ class SliderRow(QWidget):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 3, 0, 3)
         lab = QLabel(label)
-        lab.setMinimumWidth(110)
+        lab.setMinimumWidth(118)
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, MAX_SLIDER)
         self.value_label = QLabel()
-        self.value_label.setMinimumWidth(54)
+        self.value_label.setMinimumWidth(56)
         self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight |
                                       Qt.AlignmentFlag.AlignVCenter)
         lay.addWidget(lab)
@@ -132,13 +163,13 @@ class SliderRow(QWidget):
 
 
 class PreviewWidget(QWidget):
-    """Miniature live rendering of the current configuration."""
+    """Miniature live rendering of the current season mix."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumHeight(180)
         cfg = Config()
-        self.field = ParticleField(cfg, S.resolve_season(cfg), 400, 200, seed=7)
+        self.field = ParticleField(cfg, S.active_mix(cfg), 400, 200, seed=7)
         self.field.load = 3.0          # preview canvas is small → keep it lively
         self.timer = QTimer(self)
         self.timer.setInterval(33)
@@ -148,9 +179,9 @@ class PreviewWidget(QWidget):
         if not self.timer.isActive():
             self.timer.start()
 
-    def set_scene(self, cfg: Config, spec: S.SeasonSpec):
+    def set_scene(self, cfg: Config, specs: list):
         self.field.set_config(cfg)
-        self.field.set_season(spec)
+        self.field.set_mix(specs)
         self.field.resize(max(200.0, float(self.width())),
                           max(120.0, float(self.height())))
         self.field.prefill()
@@ -177,9 +208,14 @@ class SettingsWindow(QMainWindow):
         super().__init__()
         self.first_run = first_run
         self.cfg = Config.load()
-        self.spec = S.resolve_season(self.cfg)
+        # current multi-season selection ("snow+spring+autumn" etc.)
+        self.mix_keys = list(self.cfg.mix) or (
+            [self.cfg.season] if self.cfg.season != "auto" else ["auto"])
         self.manager: OverlayManager | None = None   # internal overlay (same proc)
-        self.external_overlay = probe_status() is not None
+        self.external_overlay = False
+        st = probe_status()
+        if st and st.get("running"):
+            self.external_overlay = True
         self._cards: dict[str, tuple[QFrame, QLabel]] = {}
         self._apply_timer = QTimer(self)             # debounce live push
         self._apply_timer.setSingleShot(True)
@@ -191,15 +227,19 @@ class SettingsWindow(QMainWindow):
 
         self.setWindowTitle("SeasonFall — Season Overlay Studio")
         self.setWindowIcon(app_icon())
-        self.setMinimumSize(960, 640)
+        self.setMinimumSize(960, 660)
         self._loading = True          # guard: don't echo init into cfg
         self._build_ui()
-        self.restyle(self.spec.accent)
+        self.restyle(self._accent())
         self._cfg_to_controls()
         self._loading = False
         self.preview.start()
         self._status_timer.start()
         self._update_start_labels()
+
+    def _accent(self) -> str:
+        return ACCENTS.get(self.mix_keys[-1] if self.mix_keys else "auto",
+                           ACCENTS["auto"])
 
     # ------------------------------------------------------------------ #
     #  UI construction
@@ -238,7 +278,7 @@ class SettingsWindow(QMainWindow):
         logo_row.addStretch(1)
         lay.addLayout(logo_row)
 
-        tip = QLabel("Pick your season")
+        tip = QLabel("Pick your seasons — mix any of them!")
         tip.setObjectName("h2")
         lay.addWidget(tip)
 
@@ -266,7 +306,7 @@ class SettingsWindow(QMainWindow):
 
     def _make_season_card(self, key: str) -> QFrame:
         if key == "auto":
-            name, emoji = "Auto (by date)", "🗓️"
+            name, emoji = "Auto (today)", "🗓️"
         else:
             spec = S.SPECS[key]
             name, emoji = spec.name, spec.emoji
@@ -280,9 +320,24 @@ class SettingsWindow(QMainWindow):
         lay.addWidget(em)
         lay.addWidget(label)
         lay.addStretch(1)
-        card.mousePressEvent = lambda _ev, k=key: self._select_season(k)
-        self._cards[key] = (card, label)
+        check = QLabel("✓")
+        check.setStyleSheet("font-weight: 800; background: transparent;")
+        check.setVisible(key in self.mix_keys)
+        lay.addWidget(check)
+        card.mousePressEvent = lambda _ev, k=key: self._toggle_season(k)
+        self._cards[key] = (card, check)
+        _clay(card, blur=16, dy=4, alpha=45)
         return card
+
+    def _toggle_season(self, key: str) -> None:
+        """Multi-select: any combination of seasons can fall at once."""
+        if key in self.mix_keys:
+            if len(self.mix_keys) <= 1:
+                return                     # always keep at least one season
+            self.mix_keys.remove(key)
+        else:
+            self.mix_keys.append(key)
+        self._on_any_change()
 
     def _build_right_panel(self) -> QWidget:
         right = QWidget()
@@ -290,14 +345,24 @@ class SettingsWindow(QMainWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(12)
 
+        preview_wrap = QFrame()
+        preview_wrap.setObjectName("panel")
+        preview_lay = QVBoxLayout(preview_wrap)
+        preview_lay.setContentsMargins(10, 10, 10, 10)
         self.preview = PreviewWidget()
-        self.preview.set_scene(self.cfg, self.spec)
-        lay.addWidget(self.preview, 2)
+        self.preview.set_scene(self.cfg, S.active_mix(self.cfg))
+        preview_lay.addWidget(self.preview)
+        _clay(preview_wrap, blur=24, dy=8)
+        lay.addWidget(preview_wrap, 2)
 
         body = QHBoxLayout()
         body.setSpacing(12)
-        body.addWidget(self._build_feel_panel(), 2)
-        body.addWidget(self._build_system_panel(), 1)
+        feel = self._build_feel_panel()
+        system = self._build_system_panel()
+        _clay(feel, blur=24, dy=8)
+        _clay(system, blur=24, dy=8)
+        body.addWidget(feel, 2)
+        body.addWidget(system, 1)
         lay.addLayout(body, 3)
 
         footer = QHBoxLayout()
@@ -372,8 +437,11 @@ class SettingsWindow(QMainWindow):
         self.click_through_check.toggled.connect(self._on_any_change)
         self.battery_check = QCheckBox("Pause on battery")
         self.battery_check.toggled.connect(self._on_any_change)
+        self.adaptive_check = QCheckBox("Adaptive quality (fewer flakes on weak PCs)")
+        self.adaptive_check.toggled.connect(self._on_any_change)
         for w in (self.tumble_check, self.mouse_check, self.rain_check,
-                  self.click_through_check, self.battery_check):
+                  self.click_through_check, self.battery_check,
+                  self.adaptive_check):
             lay.addWidget(w)
 
         lay.addWidget(QLabel("Quality"))
@@ -402,9 +470,10 @@ class SettingsWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     def restyle(self, accent: str) -> None:
         self.setStyleSheet(build_qss(accent))
-        for key, (card, _label) in self._cards.items():
-            selected = (key == self.cfg.season)
+        for key, (card, check) in self._cards.items():
+            selected = key in self.mix_keys
             card.setObjectName("cardOn" if selected else "card")
+            check.setVisible(selected)
             card.style().unpolish(card)
             card.style().polish(card)
 
@@ -422,15 +491,18 @@ class SettingsWindow(QMainWindow):
         self.rain_check.setChecked(c.rain)
         self.click_through_check.setChecked(c.click_through)
         self.battery_check.setChecked(c.auto_pause_battery)
+        self.adaptive_check.setChecked(c.adaptive_quality)
         self.holiday_check.setChecked(c.holiday_specials)
         self.quality_combo.setCurrentText(c.quality)
         self.fps_combo.setCurrentText(str(int(c.fps)))
         self.monitor_combo.setCurrentText(c.monitors)
         self.hemisphere_combo.setCurrentText(c.hemisphere)
-        self.restyle(self.spec.accent)
+        self.restyle(self._accent())
 
     def _collect(self) -> Config:
         c = self.cfg
+        c.mix = list(self.mix_keys)
+        c.season = self.mix_keys[0] if len(self.mix_keys) == 1 else "auto"
         c.density = int(round(self.s_density.real_value()))
         c.speed = round(self.s_speed.real_value(), 2)
         c.wind = int(round(self.s_wind.real_value()))
@@ -444,6 +516,7 @@ class SettingsWindow(QMainWindow):
         c.click_through = self.click_through_check.isChecked()
         c.auto_pause_battery = self.battery_check.isChecked()
         c.holiday_specials = self.holiday_check.isChecked()
+        c.adaptive_quality = self.adaptive_check.isChecked()
         c.quality = self.quality_combo.currentText()
         c.fps = int(self.fps_combo.currentText())
         c.monitors = self.monitor_combo.currentText()
@@ -451,20 +524,16 @@ class SettingsWindow(QMainWindow):
         c.sanitize()
         return c
 
-    def _select_season(self, key: str) -> None:
-        self.cfg.season = key
-        self.spec = S.resolve_season(self.cfg)
-        self.restyle(self.spec.accent)
-        self.preview.set_scene(self.cfg, self.spec)
-        self._on_any_change()
+    def _active_specs(self) -> list:
+        self._collect()
+        return S.active_mix(self.cfg)
 
     def _on_any_change(self, *_):
         if getattr(self, "_loading", False):
             return                    # ignore echoes while (re)initialising
-        self._collect()
-        self.spec = S.resolve_season(self.cfg)
-        self.preview.set_scene(self.cfg, self.spec)
-        self.restyle(self.spec.accent)
+        specs = self._active_specs()
+        self.preview.set_scene(self.cfg, specs)
+        self.restyle(self._accent())
         self._apply_timer.start()
 
     def _push_live(self) -> None:
@@ -485,11 +554,15 @@ class SettingsWindow(QMainWindow):
         self._collect()
         self.cfg.first_run_done = True
         self.cfg.save()
-        if self.manager is None and self.external_overlay:
+        # anti-doubling: if an overlay is already running, just update it
+        st = probe_status()
+        if st and st.get("running") and self.manager is None:
             send_command("reload")         # live-update the running overlay
+            self.external_overlay = True
         else:
             if self.manager is None:
                 self.manager = OverlayManager(self.cfg, parent=self)
+                IpcServer(self.manager)    # other processes now detect us
             # settings will close itself → keep the process alive for the overlay
             from PySide6.QtWidgets import QApplication
             app = QApplication.instance()
@@ -532,7 +605,7 @@ class SettingsWindow(QMainWindow):
             self.status_chip.setText(self.manager.stats_text())
             return
         st = probe_status()
-        if st:
+        if st and st.get("running"):
             self.external_overlay = True
             self.status_chip.setText(
                 f"running · {st.get('particles', 0)} particles · "

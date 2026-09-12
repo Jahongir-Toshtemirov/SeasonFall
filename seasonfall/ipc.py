@@ -86,10 +86,10 @@ class IpcServer(QObject):
             self.manager.resume()
         elif cmd == "status":
             reply.update({
-                "running": True,
+                "running": self.manager.running,
                 "paused": self.manager.paused,
-                "season": self.manager.spec.key,
-                "season_name": self.manager.spec.name,
+                "season": "+".join(s.key for s in self.manager.specs),
+                "season_name": self.manager.season_label(),
                 "particles": sum(len(w.field.particles)
                                  for w in self.manager.windows),
                 "fps": round(self.manager.fps, 1),

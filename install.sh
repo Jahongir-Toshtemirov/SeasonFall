@@ -2,12 +2,39 @@
 # SeasonFall installer for Linux & macOS.
 #   ./install.sh            # install + verify
 #   ./install.sh --startup  # also register login autostart
+# Works even on a bare OS: installs Python 3 itself if it is missing.
 set -uo pipefail
 cd "$(dirname "$0")"
 
+# ---------------------------------------------------------------- #
+# 0) make sure Python 3 exists (bare machines)
+# ---------------------------------------------------------------- #
+if [ "$(uname -s)" = "Darwin" ] && ! command -v python3 >/dev/null 2>&1; then
+    echo "==> macOS: Python 3 missing — requesting Command Line Tools…"
+    echo "    (a system popup will appear — click 'Install', this waits for it)"
+    xcode-select --install 2>/dev/null || true
+    for _ in $(seq 1 60); do
+        command -v python3 >/dev/null 2>&1 && break
+        sleep 10
+    done
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "==> Linux: Python 3 missing — installing via your package manager…"
+    if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
+    if command -v apt-get >/dev/null 2>&1; then
+        $SUDO apt-get update -y && $SUDO apt-get install -y python3 python3-venv python3-pip
+    elif command -v dnf >/dev/null 2>&1; then
+        $SUDO dnf install -y python3 python3-pip
+    elif command -v pacman >/dev/null 2>&1; then
+        $SUDO pacman -Sy --noconfirm python python-pip
+    elif command -v zypper >/dev/null 2>&1; then
+        $SUDO zypper install -y python3 python3-pip
+    fi
+fi
+
 PY="${PYTHON:-python3}"
 command -v "$PY" >/dev/null 2>&1 || PY=python
-command -v "$PY" >/dev/null 2>&1 || { echo "Python 3 not found — install Python 3.9+ first."; exit 1; }
+command -v "$PY" >/dev/null 2>&1 || { echo "ERROR: could not install Python 3 automatically."; echo "       Install Python 3.9+ manually, then re-run this script."; exit 1; }
 echo "==> Using $($PY --version 2>&1) at $(command -v "$PY")"
 
 # 1) virtual environment (fall back to --user install if venv is unavailable)

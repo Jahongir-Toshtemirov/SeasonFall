@@ -177,3 +177,81 @@ def resolve_season(cfg, today: date | None = None) -> SeasonSpec:
             hemi = guess_hemisphere()
         key = _month_season(today.month, hemi == "south")
     return SPECS.get(key, WINTER)
+
+
+def holiday_spec(cfg, today: date | None = None) -> SeasonSpec | None:
+    """The active holiday special (if enabled and its window is active)."""
+    if not getattr(cfg, "holiday_specials", True):
+        return None
+    today = today or date.today()
+    for key, (start, end) in _HOLIDAYS:
+        if _in_window(today, start, end):
+            return SPECS[key]
+    return None
+
+
+def active_mix(cfg, today: date | None = None) -> list[SeasonSpec]:
+    """The list of seasons falling simultaneously.
+
+    cfg.mix wins when non-empty ("auto" inside a mix resolves to today's
+    date-based season). Holiday specials join any mix as a surprise guest.
+    """
+    today = today or date.today()
+    specs: list[SeasonSpec] = []
+    keys = list(getattr(cfg, "mix", []) or [])
+    if not keys:
+        keys = [cfg.season]
+    for key in keys:
+        if key == "auto":
+            spec = resolve_season(
+                type(cfg)(season="auto", hemisphere=cfg.hemisphere,
+                          holiday_specials=False), today)
+        else:
+            spec = SPECS.get(key)
+        if spec and spec not in specs:
+            specs.append(spec)
+    if not specs:
+        specs = [resolve_season(cfg, today)]
+    guest = holiday_spec(cfg, today)
+    if guest and guest not in specs:
+        specs.append(guest)
+    return specs
+
+
+def season_label(specs: list[SeasonSpec]) -> str:
+    return " + ".join(f"{s.emoji} {s.name}" for s in specs)
+
+
+def merge_specs(specs: list[SeasonSpec], cfg) -> tuple[list[str], list[float], dict]:
+    """Combine several season specs into one particle recipe.
+
+    Every selected season contributes its own particle kinds with its own
+    weights, so a mix of 3 seasons falls with equal overall presence.
+    """
+    kinds: list[str] = []
+    weights: list[float] = []
+    palettes: dict = {}
+    for spec in specs:
+        spec_kinds = list(spec.kinds)
+        if spec.key == "autumn":
+            g = max(0, min(100, int(getattr(cfg, "golden_share", 18))))
+            spec_kinds = [(K_LEAF, 100 - g), (K_GOLDEN, g)]
+        elif spec.key == "spring" and not getattr(cfg, "rain", True):
+            spec_kinds = [(K_PETAL, 100)]
+        for kind, weight in spec_kinds:
+            if weight <= 0:
+                continue
+            if kind in kinds:
+                weights[kinds.index(kind)] += float(weight)
+            else:
+                kinds.append(kind)
+                weights.append(float(weight))
+        for kind, colors in spec.palettes.items():
+            existing = palettes.setdefault(kind, [])
+            for color in colors:
+                if color not in existing:
+                    existing.append(color)
+    if not kinds:
+        kinds, weights = [K_SNOW], [1.0]
+        palettes[K_SNOW] = [(255, 255, 255)]
+    return kinds, weights, palettes
