@@ -8,13 +8,30 @@ import sys
 DEBUG = os.environ.get("SEASONFALL_DEBUG") == "1"
 
 
+def _safe_print(prefix: str, *args) -> None:
+    """Print without crashing on Windows cp1252 / windowed (no-console) builds."""
+    try:
+        print(prefix, *args, flush=True)
+    except UnicodeEncodeError:
+        enc = getattr(sys.stdout, "encoding", None) or "ascii"
+        text = " ".join(str(a) for a in args)
+        try:
+            print(prefix, text.encode(enc, "replace").decode(enc, "replace"),
+                  flush=True)
+        except Exception:
+            pass
+    except Exception:
+        # runw.exe / piped stdio can raise OSError; never kill the app for a log line
+        pass
+
+
 def dbg(*args) -> None:
     if DEBUG:
-        print("[SeasonFall:debug]", *args, flush=True)
+        _safe_print("[SeasonFall:debug]", *args)
 
 
 def log(*args) -> None:
-    print("[SeasonFall]", *args, flush=True)
+    _safe_print("[SeasonFall]", *args)
 
 
 def is_windows() -> bool:
