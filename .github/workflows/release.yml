@@ -82,10 +82,13 @@ jobs:
           if [ -f SeasonFall-macOS.zip ]; then
             cp SeasonFall-macOS.zip release/
           fi
-          if ls ./*.deb 1>/dev/null 2>&1; then
-            cp ./*.deb release/
-          elif ls releases/*.deb 1>/dev/null 2>&1; then
-            cp releases/*.deb release/
+          # Only the freshly built package — never re-upload stale releases/*.deb
+          # leftovers from the repo tree.
+          if ls SeasonFall_*.deb 1>/dev/null 2>&1; then
+            cp SeasonFall_*.deb release/
+          elif ls releases/SeasonFall_*_amd64.deb 1>/dev/null 2>&1; then
+            newest=$(ls -t releases/SeasonFall_*_amd64.deb | head -1)
+            cp "$newest" release/
           fi
           ls -la release/
 
