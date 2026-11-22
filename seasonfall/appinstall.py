@@ -103,44 +103,60 @@ def _install_linux(icons: dict) -> list[str]:
 # --------------------------------------------------------------------------- #
 #  Windows — Start Menu shortcut (pythonw = GUI only, no console)
 # --------------------------------------------------------------------------- #
-def _install_windows(icons: dict) -> list[str]:
-    base_menu = Path(os.environ.get("APPDATA", str(Path.home() / "AppData")))
-    programs = base_menu / "Microsoft" / "Start Menu" / "Programs"
-    programs.mkdir(parents=True, exist_ok=True)
-    lnk = programs / "SeasonFall.lnk"
-
-    python = os.path.abspath(sys.executable)
-    pythonw = Path(python).with_name("pythonw.exe")
-    if pythonw.exists():
-        python = str(pythonw)
-    ico = icons.get("ico", "")
-
-    if is_frozen():
-        # Packaged .exe: launch directly, no console, no repo working dir.
-        target = os.path.abspath(sys.executable)
-        arguments = "settings"
-        workdir = str(Path.home())
-    else:
-        target = python
-        arguments = "-m seasonfall settings"
-        workdir = repo_root()
-
+def _windows_shortcut(path: Path, target: str, arguments: str,
+                      workdir: str, ico: str, description: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     icon_part = f"$s.IconLocation = '{ico}, 0'; " if ico else ""
+    # Escape single quotes for PowerShell single-quoted strings
+    def _q(s: str) -> str:
+        return s.replace("'", "''")
+
     ps_script = (
         "$ws = New-Object -ComObject WScript.Shell; "
-        f"$s = $ws.CreateShortcut('{lnk}'); "
-        f"$s.TargetPath = '{target}'; "
-        f"$s.Arguments = '{arguments}'; "
-        f"$s.WorkingDirectory = '{workdir}'; "
+        f"$s = $ws.CreateShortcut('{_q(str(path))}'); "
+        f"$s.TargetPath = '{_q(target)}'; "
+        f"$s.Arguments = '{_q(arguments)}'; "
+        f"$s.WorkingDirectory = '{_q(workdir)}'; "
         f"{icon_part}"
-        "$s.Description = 'SeasonFall - falling seasons for your desktop'; "
+        f"$s.Description = '{_q(description)}'; "
         "$s.Save()"
     )
     subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive",
          "-ExecutionPolicy", "Bypass", "-Command", ps_script],
         capture_output=True, timeout=60)
-    return [f"Start Menu shortcut → {lnk}"]
+
+
+def _install_windows(icons: dict) -> list[str]:
+    base_menu = Path(os.environ.get("APPDATA", str(Path.home() / "AppData")))
+    programs = base_menu / "Microsoft" / "Start Menu" / "Programs"
+    desktop = Path.home() / "Desktop"
+
+    python = os.path.abspath(sys.executable)
+    pythonw = Path(python).with_name("pythonw.exe")
+    if pythonw.exists():
+        python = str(pythonw)
+    ico = str(icons.get("ico", "") or "")
+
+    if is_frozen():
+        # Packaged .exe: launch directly, no console, no repo working dir.
+        target = os.path.abspath(sys.executable)
+        arguments = ""                 # default → settings UI
+        workdir = str(Path.home())
+    else:
+        target = python
+        arguments = "-m seasonfall"
+        workdir = repo_root()
+
+    made = []
+    for folder, name in ((programs, "SeasonFall.lnk"),
+                         (desktop, "SeasonFall.lnk")):
+        lnk = folder / name
+        _windows_shortcut(
+            lnk, target, arguments, workdir, ico,
+            "SeasonFall — change seasons or stop the snow")
+        made.append(f"shortcut → {lnk}")
+    return made
 
 
 # --------------------------------------------------------------------------- #
@@ -211,10 +227,13 @@ def remove() -> list[str]:
     removed = []
     if is_windows():
         base_menu = Path(os.environ.get("APPDATA", str(Path.home() / "AppData")))
-        lnk = base_menu / "Microsoft" / "Start Menu" / "Programs" / "SeasonFall.lnk"
-        if lnk.exists():
-            lnk.unlink()
-            removed.append(str(lnk))
+        for lnk in (
+            base_menu / "Microsoft" / "Start Menu" / "Programs" / "SeasonFall.lnk",
+            Path.home() / "Desktop" / "SeasonFall.lnk",
+        ):
+            if lnk.exists():
+                lnk.unlink()
+                removed.append(str(lnk))
     elif is_macos():
         app_root = Path.home() / "Applications" / "SeasonFall.app"
         if app_root.exists():

@@ -19,12 +19,16 @@ Grab one file from the [`releases/`](releases/) folder. No Python needed.
 |---|---|---|
 | Windows | `SeasonFall-Windows.exe` | Double-click it (Windows 10/11 64-bit). |
 | macOS | `SeasonFall.app` | Double-click (first time: right-click → Open). |
-| Ubuntu / Debian | `SeasonFall_1.1.2_amd64.deb` | `sudo apt install ./SeasonFall_1.1.2_amd64.deb`, then open **SeasonFall** from your app list. |
+| Ubuntu / Debian | `SeasonFall_1.2.0_amd64.deb` | `sudo apt install ./SeasonFall_1.2.0_amd64.deb`, then open **SeasonFall** from your app list. |
 
 On first launch a window opens where you pick a season, drag a few sliders and
-decide whether SeasonFall should start when you log in. Close the window and
-it starts falling. To get that window back later, open **SeasonFall → Season
-Settings** from your app list (or run `SeasonFall settings`).
+press **Start & Enjoy**. Snow keeps falling after you close that window.
+
+**How to stop or change it (no tech skills needed):**
+- Look for the **snowflake icon near the clock** (system tray / menu bar).
+  Right-click → **Settings…**, **Pause**, or **Quit SeasonFall**.
+- Or just **open SeasonFall again** (double-click the `.exe`, or the Desktop /
+  Start Menu shortcut) — the settings window comes back, with **Stop snowing**.
 
 ### Run from source instead
 

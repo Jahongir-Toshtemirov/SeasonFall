@@ -70,6 +70,7 @@ class Config:
     # bookkeeping
     first_run_done: bool = False
     startup_prompted: bool = False
+    tray_tip_shown: bool = False    # one-time "look near the clock" tip
     version: int = CONFIG_VERSION
 
     # ---------- persistence ----------

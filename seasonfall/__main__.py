@@ -92,18 +92,25 @@ def run_overlay(overrides: dict, duration: float | None = None) -> int:
     _enable_ctrl_c_quit(app)
     app.setApplicationName("SeasonFall")
     app.setApplicationDisplayName("SeasonFall")
+    app.setQuitOnLastWindowClosed(False)
 
     from .ipc import IpcServer, probe_status
     from .overlay import OverlayManager
     from . import settings_gui
+    from .tray import attach_tray
 
     app.setWindowIcon(settings_gui.app_icon())
 
     status = probe_status()
     if status and status.get("running"):
-        log(f"overlay already running ({status.get('season_name', '?')}) — use "
-            f"'python -m seasonfall settings' to change, '... quit' to stop")
-        return 0
+        # Second launch while snowing → open settings (not a silent no-op).
+        log(f"overlay already running ({status.get('season_name', '?')}) "
+            f"— opening settings")
+        win = settings_gui.SettingsWindow()
+        win.show()
+        win.raise_()
+        win.activateWindow()
+        return app.exec()
 
     cfg = Config.load()
     for key, val in overrides.items():
@@ -116,6 +123,9 @@ def run_overlay(overrides: dict, duration: float | None = None) -> int:
     manager = OverlayManager(cfg)
     IpcServer(manager)
     manager.start()
+    tray = attach_tray(manager)
+    if tray is not None:
+        tray.show_welcome_tip()
     if duration:
         QTimer.singleShot(int(duration * 1000), app.quit)
     return app.exec()
@@ -127,10 +137,13 @@ def run_settings() -> int:
 
     from . import settings_gui
 
-    app = QApplication(sys.argv[:1])
-    _enable_ctrl_c_quit(app)
-    app.setApplicationName("SeasonFall")
-    app.setWindowIcon(settings_gui.app_icon())
+    app = QApplication.instance()
+    created_app = app is None
+    if created_app:
+        app = QApplication(sys.argv[:1])
+        _enable_ctrl_c_quit(app)
+        app.setApplicationName("SeasonFall")
+        app.setWindowIcon(settings_gui.app_icon())
     first_run = not Config.exists() or not Config.load().first_run_done
     if first_run:
         # first bootstrap → also put SeasonFall into the OS app list
@@ -144,7 +157,11 @@ def run_settings() -> int:
             dbg("app-list registration failed:", exc)
     win = settings_gui.SettingsWindow(first_run=first_run)
     win.show()
-    return app.exec()
+    win.raise_()
+    win.activateWindow()
+    if created_app:
+        return app.exec()
+    return 0
 
 
 def _ipc_app():
@@ -409,14 +426,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if cmd == "status":
         return cmd_status()
-    # default smart start -------------------------------------------------- #
+    # default launch (double-click / no args) ------------------------------ #
+    # Always open Settings so anyone can change seasons or hit "Stop snowing".
+    # Login autostart uses the explicit "overlay" command instead.
     if not Config.exists() or not Config.load().first_run_done:
         log("welcome! opening the season picker…")
-        return run_settings()
-    # NOTE: no probe here — run_overlay() probes *after* creating the
-    # QApplication. Probing earlier would create a QCoreApplication singleton
-    # and Qt forbids both singletons in one process (libshiboken RuntimeError).
-    return run_overlay(_collect_overrides(args), duration=args.duration)
+    return run_settings()
 
 
 if __name__ == "__main__":

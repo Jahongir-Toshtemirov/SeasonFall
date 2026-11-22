@@ -211,18 +211,21 @@ class PreviewWidget(QWidget):
 class SettingsWindow(QMainWindow):
     """The main configuration window."""
 
-    def __init__(self, first_run: bool = False):
+    def __init__(self, first_run: bool = False, manager: OverlayManager | None = None):
         super().__init__()
         self.first_run = first_run
         self.cfg = Config.load()
         # current multi-season selection ("snow+spring+autumn" etc.)
         self.mix_keys = list(self.cfg.mix) or (
             [self.cfg.season] if self.cfg.season != "auto" else ["auto"])
-        self.manager: OverlayManager | None = None   # internal overlay (same proc)
+        # Prefer an in-process manager (tray → settings). Otherwise detect a
+        # separate overlay process via IPC.
+        self.manager: OverlayManager | None = manager
         self.external_overlay = False
-        st = probe_status()
-        if st and st.get("running"):
-            self.external_overlay = True
+        if self.manager is None:
+            st = probe_status()
+            if st and st.get("running"):
+                self.external_overlay = True
         self._cards: dict[str, tuple[QFrame, QLabel]] = {}
         self._apply_timer = QTimer(self)             # debounce live push
         self._apply_timer.setSingleShot(True)
@@ -288,6 +291,12 @@ class SettingsWindow(QMainWindow):
         tip = QLabel("Pick your seasons — mix any of them!")
         tip.setObjectName("h2")
         lay.addWidget(tip)
+        how = QLabel(
+            "While snowing: look for the snowflake icon near the clock "
+            "(system tray). Right-click it → Settings, Pause, or Quit.")
+        how.setObjectName("muted")
+        how.setWordWrap(True)
+        lay.addWidget(how)
 
         for key in S.GUI_SEASON_ORDER:
             lay.addWidget(self._make_season_card(key))
@@ -379,7 +388,8 @@ class SettingsWindow(QMainWindow):
         footer.addStretch(1)
         btn_folder = QPushButton("Config folder")
         btn_folder.clicked.connect(self._open_config_folder)
-        self.btn_stop = QPushButton("⏹ Stop")
+        self.btn_stop = QPushButton("⏹ Stop snowing")
+        self.btn_stop.setObjectName("danger")
         self.btn_stop.clicked.connect(self._stop_overlay)
         btn_save = QPushButton("Save")
         btn_save.clicked.connect(self._save_only)
@@ -561,34 +571,58 @@ class SettingsWindow(QMainWindow):
         self._collect()
         self.cfg.first_run_done = True
         self.cfg.save()
-        # anti-doubling: if an overlay is already running, just update it
+        # anti-doubling: if an overlay is already running elsewhere, just update it
         st = probe_status()
         if st and st.get("running") and self.manager is None:
             send_command("reload")         # live-update the running overlay
             self.external_overlay = True
-        else:
-            if self.manager is None:
-                self.manager = OverlayManager(self.cfg, parent=self)
-                IpcServer(self.manager)    # other processes now detect us
-            # settings will close itself → keep the process alive for the overlay
-            from PySide6.QtWidgets import QApplication
-            app = QApplication.instance()
-            if app is not None:
-                app.setQuitOnLastWindowClosed(False)
-            self.manager.apply_config(self.cfg.clone())
+            if not self.cfg.startup_prompted:
+                self._ask_startup()
+            self._update_start_labels()
+            self.close()
+            return
+
+        if self.manager is None:
+            self.manager = OverlayManager(self.cfg, parent=self)
+            IpcServer(self.manager)        # other processes now detect us
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            app.setQuitOnLastWindowClosed(False)
+        self.manager.apply_config(self.cfg.clone())
+        if not self.manager.running:
             self.manager.start()
-            self.external_overlay = True
+        self.external_overlay = True
+
+        from .tray import attach_tray
+        tray = getattr(self.manager, "_seasonfall_tray", None)
+        if tray is None:
+            tray = attach_tray(self.manager)
+        if tray is not None:
+            tray.show_welcome_tip()
+
         if not self.cfg.startup_prompted:
             self._ask_startup()
         self._update_start_labels()
-        self.close()                       # the app closes itself → snow remains
+
+        # Close settings only when the tray can take over control. Otherwise
+        # keep this window open so the user still has Stop / Settings.
+        if tray is not None:
+            self.close()
+        else:
+            QMessageBox.information(
+                self, "SeasonFall",
+                "Your desktop has no system tray, so this settings window "
+                "will stay open — use “Stop snowing” whenever you want it gone.")
 
     def _ask_startup(self) -> None:
         box = QMessageBox(self)
         box.setWindowTitle("SeasonFall")
         box.setIcon(QMessageBox.Icon.Question)
-        box.setText("❄️  Start SeasonFall automatically when you log in?")
-        box.setInformativeText("You can change this later from the settings window.")
+        box.setText("Start SeasonFall automatically when you log in?")
+        box.setInformativeText(
+            "You can stop it any time from the snowflake icon near the clock, "
+            "or by opening SeasonFall again.")
         yes = box.addButton("Yes, start at login", QMessageBox.ButtonRole.YesRole)
         box.addButton("No thanks", QMessageBox.ButtonRole.NoRole)
         box.exec()
@@ -600,6 +634,13 @@ class SettingsWindow(QMainWindow):
 
     def _stop_overlay(self) -> None:
         if self.manager is not None:
+            tray = getattr(self.manager, "_seasonfall_tray", None)
+            if tray is not None:
+                tray.hide()
+                try:
+                    delattr(self.manager, "_seasonfall_tray")
+                except Exception:
+                    pass
             self.manager.stop()
             self.manager = None
         elif self.external_overlay:
