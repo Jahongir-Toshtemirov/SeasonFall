@@ -17,9 +17,9 @@ Grab one file from the [`releases/`](releases/) folder. No Python needed.
 
 | You have | Get | Do |
 |---|---|---|
-| Windows | `SeasonFall-Windows.exe` | Double-click it. |
+| Windows | `SeasonFall-Windows.exe` | Double-click it (Windows 10/11 64-bit). |
 | macOS | `SeasonFall.app` | Double-click (first time: right-click → Open). |
-| Ubuntu / Debian | `SeasonFall_1.1.0_amd64.deb` | `sudo apt install ./SeasonFall_1.1.0_amd64.deb`, then open **SeasonFall** from your app list. |
+| Ubuntu / Debian | `SeasonFall_1.1.1_amd64.deb` | `sudo apt install ./SeasonFall_1.1.1_amd64.deb`, then open **SeasonFall** from your app list. |
 
 On first launch a window opens where you pick a season, drag a few sliders and
 decide whether SeasonFall should start when you log in. Close the window and

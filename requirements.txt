@@ -1,1 +1,4 @@
-PySide6>=6.6
+# PySide6 6.10+ Windows wheels hard-depend on ICU DLLs that are not shipped,
+# and unofficial ICU builds often export the wrong ABI ("procedure could not
+# be found"). Stay on 6.9.x until upstream ships a working Windows wheel.
+PySide6>=6.6,<6.10

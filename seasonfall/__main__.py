@@ -227,8 +227,10 @@ def cmd_smoke() -> int:
     from . import startup
     from .engine import ParticleField
 
+    import tempfile
+
     app = QApplication([])
-    out_dir = Path("/tmp/seasonfall_smoke")
+    out_dir = Path(tempfile.gettempdir()) / "seasonfall_smoke"
     out_dir.mkdir(exist_ok=True)
     ok = True
 

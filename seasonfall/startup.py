@@ -39,7 +39,7 @@ def _windows_vbs() -> Path:
     vbs.write_text(
         'Set sh = CreateObject("WScript.Shell")\n'
         f'sh.CurrentDirectory = "{_repo_root()}"\n'
-        f'sh.Run """{python}"" -m seasonfall --overlay", 0, False\n',
+        f'sh.Run """{python}"" -m seasonfall overlay", 0, False\n',
         encoding="utf-8")
     return vbs
 
