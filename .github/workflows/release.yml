@@ -105,14 +105,29 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          # ubuntu-latest runners already ship an Android SDK.
+          : "${ANDROID_HOME:=/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f | head -n 1)
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
+            "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Build release APK
         working-directory: android
         run: |
           set -euo pipefail
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
           curl -fsSL -o /tmp/gradle.zip \
             https://services.gradle.org/distributions/gradle-8.9-bin.zip
           unzip -q /tmp/gradle.zip -d /tmp
@@ -122,7 +137,7 @@ jobs:
           mkdir -p ../release-android
           cp app/build/outputs/apk/release/app-release.apk \
             ../release-android/SeasonFall-Android.apk
-          ls -la ../release-android/
+          ls -lah ../release-android/
 
       - uses: actions/upload-artifact@v4
         with:
