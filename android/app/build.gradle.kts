@@ -10,21 +10,18 @@ android {
     defaultConfig {
         applicationId = "com.seasonfall.app"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 130
-        versionName = "1.3.0"
+        targetSdk = 34
+        versionCode = 131
+        versionName = "1.3.1"
     }
 
     buildTypes {
         release {
-            // Sideload-friendly FOSS signing (Play Store would use a private key).
+            // Sideload-friendly FOSS signing. Keep minify OFF — R8 has been
+            // a common cause of blank/forever-loading launches on OEMs.
             signingConfig = signingConfigs.getByName("debug")
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
         debug {
             isMinifyEnabled = false
@@ -39,7 +36,7 @@ android {
         jvmTarget = "17"
     }
     buildFeatures {
-        viewBinding = true
+        viewBinding = false
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -47,8 +44,6 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.2.0")
 }

@@ -4,15 +4,15 @@ import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.seasonfall.app.databinding.ActivitySettingsBinding
 
 class SettingsActivity : AppCompatActivity() {
-
-    private lateinit var binding: ActivitySettingsBinding
 
     private val seasonKeys = listOf(
         Prefs.SEASON_WINTER,
@@ -24,33 +24,65 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivitySettingsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        try {
+            setContentView(R.layout.activity_settings)
+            wireUi()
+        } catch (t: Throwable) {
+            Toast.makeText(this, "SeasonFall failed to open: ${t.message}", Toast.LENGTH_LONG)
+                .show()
+            finish()
+        }
+    }
 
-        binding.seasonSpinner.adapter = ArrayAdapter(
+    private fun wireUi() {
+        val seasonSpinner = findViewById<Spinner>(R.id.seasonSpinner)
+        val densitySeek = findViewById<SeekBar>(R.id.densitySeek)
+        val speedSeek = findViewById<SeekBar>(R.id.speedSeek)
+        val setBtn = findViewById<Button>(R.id.setWallpaperBtn)
+
+        seasonSpinner.adapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_dropdown_item,
             resources.getStringArray(R.array.seasons)
         )
-        val idx = seasonKeys.indexOf(Prefs.season(this)).coerceAtLeast(0)
-        binding.seasonSpinner.setSelection(idx)
+        seasonSpinner.setSelection(seasonKeys.indexOf(Prefs.season(this)).coerceAtLeast(0), false)
+        densitySeek.progress = Prefs.density(this)
+        speedSeek.progress = Prefs.speed(this)
 
-        binding.densitySeek.progress = Prefs.density(this)
-        binding.speedSeek.progress = Prefs.speed(this)
-
-        binding.seasonSpinner.onItemSelectedListener =
-            SimpleItemSelected { position ->
-                Prefs.setSeason(this, seasonKeys[position])
+        seasonSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: android.view.View?,
+                position: Int,
+                id: Long
+            ) {
+                if (position in seasonKeys.indices) {
+                    Prefs.setSeason(this@SettingsActivity, seasonKeys[position])
+                }
             }
 
-        binding.densitySeek.setOnSeekBarChangeListener(SimpleSeek {
-            Prefs.setDensity(this, it)
-        })
-        binding.speedSeek.setOnSeekBarChangeListener(SimpleSeek {
-            Prefs.setSpeed(this, it)
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        densitySeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) Prefs.setDensity(this@SettingsActivity, progress)
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-        binding.setWallpaperBtn.setOnClickListener { offerLiveWallpaper() }
+        speedSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) Prefs.setSpeed(this@SettingsActivity, progress)
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        setBtn.setOnClickListener { offerLiveWallpaper() }
     }
 
     private fun offerLiveWallpaper() {
@@ -74,25 +106,4 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
     }
-}
-
-private class SimpleSeek(val onChange: (Int) -> Unit) : SeekBar.OnSeekBarChangeListener {
-    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-        if (fromUser) onChange(progress)
-    }
-
-    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-}
-
-private class SimpleItemSelected(val onSelect: (Int) -> Unit) :
-    android.widget.AdapterView.OnItemSelectedListener {
-    override fun onItemSelected(
-        parent: android.widget.AdapterView<*>?,
-        view: android.view.View?,
-        position: Int,
-        id: Long
-    ) = onSelect(position)
-
-    override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
 }

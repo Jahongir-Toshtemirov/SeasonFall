@@ -13,8 +13,10 @@ while the home screen is visible, so it stays easy on battery and heat.
 ## Install
 
 1. Download `SeasonFall-Android.apk` from [GitHub Releases](https://github.com/Jahongir-Toshtemirov/SeasonFall/releases).
-2. Allow install from that source if Android asks.
-3. Open **SeasonFall** → pick a season → **Set as live wallpaper**.
+2. If an older SeasonFall is stuck installing, uninstall it first (Settings → Apps).
+3. Allow install from that source if Android asks.
+4. Open **SeasonFall** → pick a season → **Set as live wallpaper**.
+5. In the wallpaper preview, tap **Set wallpaper** / **Apply** (wording varies by phone).
 
 ## Build locally
 

@@ -75,12 +75,14 @@
             android:max="100"
             android:progress="45" />
 
-        <com.google.android.material.button.MaterialButton
+        <Button
             android:id="@+id/setWallpaperBtn"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="32dp"
+            android:backgroundTint="@color/accent"
             android:text="@string/set_wallpaper"
-            android:textAllCaps="false" />
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF" />
     </LinearLayout>
 </ScrollView>
