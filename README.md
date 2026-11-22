@@ -31,7 +31,7 @@ Settings** from your app list (or run `SeasonFall settings`).
 Works on any OS with Python 3.10 or newer:
 
 ```bash
-git clone https://github.com/<you>/SeasonFall.git
+git clone https://github.com/Jahongir-Toshtemirov/SeasonFall.git
 cd SeasonFall
 python3 SeasonFall.py        # Windows: py SeasonFall.py
 ```
