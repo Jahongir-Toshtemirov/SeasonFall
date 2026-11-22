@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SeasonFall</string>
+    <string name="wallpaper_name">SeasonFall</string>
+    <string name="wallpaper_description">Light seasonal snowfall for your home screen — low battery use.</string>
+    <string name="set_wallpaper">Set as live wallpaper</string>
+    <string name="season_label">Season</string>
+    <string name="density_label">How much falls</string>
+    <string name="speed_label">Speed</string>
+    <string name="hint">Tip: SeasonFall runs as a live wallpaper, so Android pauses it when you open apps. That keeps phones cool and battery-friendly.</string>
+    <string-array name="seasons">
+        <item>Winter snow</item>
+        <item>Spring petals</item>
+        <item>Summer sparks</item>
+        <item>Autumn leaves</item>
+        <item>Auto (by date)</item>
+    </string-array>
+</resources>

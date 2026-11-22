@@ -4,9 +4,10 @@ Ready-to-run SeasonFall packages — no Python, no terminal needed.
 
 | OS | File | How to use |
 |---|---|---|
-| 🐧 **Linux** (Debian/Ubuntu) | `SeasonFall_1.2.0_amd64.deb` | `sudo apt install ./SeasonFall_1.2.0_amd64.deb` → launch **SeasonFall** from the app grid |
+| 🐧 **Linux** (Debian/Ubuntu) | `SeasonFall_*.deb` | `sudo apt install ./SeasonFall_*.deb` → launch **SeasonFall** from the app grid |
 | 🪟 **Windows** | `SeasonFall-Windows.exe` | double-click — single file, nothing to install, fully offline (needs Windows 10/11 64-bit) |
-| 🍎 **macOS** | `SeasonFall.app` | double-click it (right-click → *Open* the first time for Gatekeeper), or drag into `Applications`. Auto-installs its toolkit into your user Python on first run (~70 MB, needs internet once; if macOS asks to install *Command Line Tools*, accept — that provides `python3`) |
+| 🍎 **macOS** | `SeasonFall.app` / `SeasonFall-macOS.zip` | double-click (right-click → *Open* the first time for Gatekeeper) |
+| 🤖 **Android** | `SeasonFall-Android.apk` | install → open app → **Set as live wallpaper** (battery-friendly; pauses when you leave the home screen) |
 
 ## Rebuilding
 

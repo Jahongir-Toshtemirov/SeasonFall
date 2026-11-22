@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="clay_bg">#EFE7DA</color>
+    <color name="clay_panel">#FBF4E8</color>
+    <color name="clay_text">#4A4034</color>
+    <color name="clay_muted">#988C7A</color>
+    <color name="accent">#5FB4E5</color>
+    <color name="sky">#223047</color>
+</resources>

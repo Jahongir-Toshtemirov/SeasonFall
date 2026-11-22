@@ -1,7 +1,7 @@
 name: Release
 
-# Builds the Windows .exe, macOS .app and Linux .deb and attaches them to a
-# GitHub Release. Trigger: push a tag like v1.1.1 (or run manually).
+# Builds Windows .exe, macOS .app, Linux .deb, Android .apk and attaches
+# them to a GitHub Release. Trigger: push a tag like v1.3.0 (or run manually).
 on:
   push:
     tags: ['v*']
@@ -82,8 +82,6 @@ jobs:
           if [ -f SeasonFall-macOS.zip ]; then
             cp SeasonFall-macOS.zip release/
           fi
-          # Only the freshly built package — never re-upload stale releases/*.deb
-          # leftovers from the repo tree.
           if ls SeasonFall_*.deb 1>/dev/null 2>&1; then
             cp SeasonFall_*.deb release/
           elif ls releases/SeasonFall_*_amd64.deb 1>/dev/null 2>&1; then
@@ -97,8 +95,42 @@ jobs:
           name: SeasonFall-${{ matrix.name }}
           path: release/*
 
+  android:
+    name: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build release APK
+        working-directory: android
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/gradle.zip \
+            https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-8.9/bin/gradle wrapper --gradle-version 8.9
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          mkdir -p ../release-android
+          cp app/build/outputs/apk/release/app-release.apk \
+            ../release-android/SeasonFall-Android.apk
+          ls -la ../release-android/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SeasonFall-android
+          path: release-android/*
+
   release:
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:

@@ -16,3 +16,12 @@ packaging/_macbuild/
 packaging/_winepy/
 
 _ci_*/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/capture/
+android/.cxx/
+
