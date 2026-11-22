@@ -14,3 +14,5 @@ packaging/_debroot/
 packaging/_winportable/
 packaging/_macbuild/
 packaging/_winepy/
+
+_ci_*/
